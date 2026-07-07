@@ -9,7 +9,7 @@ workflows:
       # Nom de l'intégration App Store Connect que tu créeras dans Codemagic (Teams > Integrations)
       app_store_connect: MonSport ASC key
     environment:
-      node: 20
+      node: 22
       xcode: latest
     scripts:
       - name: Installer les dépendances

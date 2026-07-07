@@ -736,6 +736,8 @@ function renderStrava(){
 /* ============ SANTÉ (import Apple Santé) ============ */
 let healthCharts=[];
 $('import-health').onclick=()=>$('health-file').click();
+$('sync-health-live').onclick=syncHealthLive;
+if(IS_NATIVE) $('sync-health-live').classList.remove('hide');
 $('health-file').onchange=async e=>{
   const f=e.target.files[0]; if(!f) return;
   $('health-status').textContent='Lecture du fichier… (ça peut prendre 1-2 min)';
@@ -877,6 +879,57 @@ function sleepBreakdown(n){
   const leg=(k,lbl)=>n[k]>0?`<div style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:${SLEEP_COLORS[k]}"></span><span style="color:var(--muted)">${lbl}</span><b>${fmtMin(n[k])}</b></div>`:'';
   return `<div style="display:flex;height:16px;border-radius:8px;overflow:hidden;margin:14px 0 12px">${seg('deep')}${seg('core')}${seg('rem')}${seg('awake')}</div>
     <div style="display:flex;flex-wrap:wrap;gap:10px 16px;font-size:12px">${leg('deep','Profond')}${leg('rem','Paradoxal')}${leg('core','Léger')}${leg('awake','Éveillé')}</div>`;
+}
+
+/* ---- Apple Santé LIVE (module natif HealthKit) ---- */
+const HK_WORKOUTS={13:'Vélo',16:'Elliptique',20:'Renforcement',24:'Randonnée',37:'Course',46:'Natation',50:'Musculation',52:'Marche',57:'Yoga',63:'HIIT',70:'Traction'};
+function hkWorkoutName(t){ return HK_WORKOUTS[t]||'Séance'; }
+function hkStageKey(v){ return v===2?'awake':v===5?'rem':v===4?'deep':(v===3||v===1)?'core':null; }
+function clockLocal(ms){ const t=new Date(ms); return String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'); }
+function healthKitToDB(d){
+  const iso10=s=>(s||'').slice(0,10);
+  const daily=arr=>(arr||[]).map(x=>({date:iso10(x.date),v:x.value})).sort((a,b)=>a.date<b.date?-1:1).slice(-185);
+  // Sommeil : regrouper par nuit (date de réveil = fin), sommer par phase
+  const stages={};
+  (d.sleep||[]).forEach(s=>{
+    const mins=(new Date(s.end)-new Date(s.start))/60000; if(!(mins>0&&mins<16*60))return;
+    const night=iso10(s.end), st=stages[night]=stages[night]||{awake:0,rem:0,core:0,deep:0,asleep:0}, k=hkStageKey(s.value);
+    if(!k)return; st[k]+=mins; if(k!=='awake') st.asleep+=mins;
+  });
+  const nights=Object.keys(stages).sort().slice(-185);
+  const sleep=nights.map(date=>{const s=stages[date];return {date,hours:+(s.asleep/60).toFixed(1),awake:Math.round(s.awake),rem:Math.round(s.rem),core:Math.round(s.core),deep:Math.round(s.deep),score:sleepScore(s)};});
+  let hypno=null;
+  if(nights.length){
+    const lastN=nights[nights.length-1];
+    const segs=(d.sleep||[]).filter(x=>iso10(x.end)===lastN&&hkStageKey(x.value)).map(x=>({stage:hkStageKey(x.value),ms:new Date(x.start).getTime(),dur:(new Date(x.end)-new Date(x.start))/60000})).filter(x=>isFinite(x.ms)).sort((a,b)=>a.ms-b.ms);
+    if(segs.length){const w0=segs[0].ms,w1=Math.max(...segs.map(x=>x.ms+x.dur*60000));hypno={date:lastN,start:clockLocal(w0),end:clockLocal(w1),total:Math.round((w1-w0)/60000),segs:segs.map(x=>({stage:x.stage,off:Math.round((x.ms-w0)/60000),dur:Math.round(x.dur)}))};}
+  }
+  return {
+    imported:todayISO(), source:'live', sleep, hypno,
+    steps: daily(d.steps).map(x=>({date:x.date,count:Math.round(x.v)})),
+    energy: daily(d.energy).map(x=>({date:x.date,kcal:Math.round(x.v)})),
+    hr: daily(d.hr).map(x=>({date:x.date,avg:Math.round(x.v)})),
+    hrv: daily(d.hrv).map(x=>({date:x.date,ms:Math.round(x.v)})),
+    rest: daily(d.rest).map(x=>({date:x.date,rest:Math.round(x.v)})),
+    weight: daily(d.weight).map(x=>({date:x.date,kg:+x.v.toFixed(1)})),
+    exo: [],
+    vo2: (d.vo2&&d.vo2.length)?Math.round(d.vo2[d.vo2.length-1].value):0,
+    workouts: (d.workouts||[]).map(w=>({act:hkWorkoutName(w.type),date:iso10(w.start),dur:Math.round((w.duration||0)/60),dist:(w.distance||0)/1000,kcal:Math.round(w.calories||0)})).sort((a,b)=>a.date<b.date?1:-1).slice(0,40)
+  };
+}
+async function syncHealthLive(){
+  const HK=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthKit);
+  if(!HK){ alert('Module Santé disponible uniquement dans l\'app iOS installée.'); return; }
+  $('health-status').textContent='Autorisation Apple Santé…';
+  try{
+    const av=await HK.isAvailable(); if(!av.available){ $('health-status').textContent='Apple Santé indisponible sur cet appareil.'; return; }
+    await HK.requestAuthorization();
+    $('health-status').textContent='Lecture des données… (quelques secondes)';
+    const data=await HK.queryAll({days:185});
+    DB.health=healthKitToDB(data); save();
+    $('health-status').textContent='✅ Synchronisé (Apple Santé, en direct)';
+    renderHealth();
+  }catch(e){ $('health-status').textContent='❌ '+(e.message||e); }
 }
 
 function renderHealth(){

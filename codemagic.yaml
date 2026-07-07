@@ -9,9 +9,6 @@ workflows:
       # Nom de l'intégration App Store Connect que tu créeras dans Codemagic (Teams > Integrations)
       app_store_connect: MonSport ASC key
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.yohan.monsport
       node: 20
       xcode: latest
     scripts:

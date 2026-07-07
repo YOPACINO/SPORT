@@ -14,6 +14,10 @@ workflows:
     scripts:
       - name: Installer les dépendances
         script: npm ci || npm install
+      - name: Préparer les assets web (dossier www)
+        script: |
+          mkdir -p www
+          cp index.html app.js manifest.json icon.svg sw.js confidentialite.html www/
       - name: Synchroniser Capacitor iOS
         script: npx cap sync ios
       - name: Signature (création auto du certificat + profil App Store)

@@ -49,6 +49,17 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.yohan.monsport</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>monsport</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MonSport utilise votre position pour tracer votre itinéraire et calculer distance et allure pendant une séance cardio.</string>
 	<key>NSCameraUsageDescription</key>

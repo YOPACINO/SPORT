@@ -643,24 +643,37 @@ async function stravaApi(payload){
   if(!r.ok && !data.error) data.error='Erreur '+r.status;
   return data;
 }
-function stravaConnect(){
-  const uri=location.origin+'/';
-  location.href='https://www.strava.com/oauth/authorize?client_id='+STRAVA_CLIENT_ID+
+const CAP = window.Capacitor;
+const IS_NATIVE = !!(CAP && CAP.isNativePlatform && CAP.isNativePlatform());
+const SITE_URL = 'https://graceful-capybara-5c8190.netlify.app';
+function stravaAuthUrl(uri){
+  return 'https://www.strava.com/oauth/authorize?client_id='+STRAVA_CLIENT_ID+
     '&response_type=code&redirect_uri='+encodeURIComponent(uri)+
     '&approval_prompt=auto&scope=read,activity:read_all';
 }
-async function handleStravaCallback(){
+function stravaConnect(){
+  if(IS_NATIVE && CAP.Plugins && CAP.Plugins.Browser){
+    // App native : ouvre Strava dans un navigateur in-app, retour géré par lien profond (monsport://)
+    CAP.Plugins.Browser.open({ url: stravaAuthUrl(SITE_URL+'/strava-callback.html') });
+  } else {
+    location.href = stravaAuthUrl(location.origin+'/');
+  }
+}
+async function exchangeStravaCode(code){
+  const data=await stravaApi({action:'exchange',code});
+  if(data && data.access_token){
+    DB.strava={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:data.expires_at,athlete:data.athlete||null,activities:[]};
+    save(); renderStrava(); stravaSync();
+  } else {
+    alert('Connexion Strava échouée : '+(data.error||'inconnue'));
+  }
+}
+async function handleStravaCallback(){   // version web (redirection dans la même page)
   const p=new URLSearchParams(location.search);
   const code=p.get('code');
   if(p.get('error')){ history.replaceState({},'',location.pathname); return false; }
   if(!code) return false;
-  const data=await stravaApi({action:'exchange',code});
-  if(data && data.access_token){
-    DB.strava={access_token:data.access_token,refresh_token:data.refresh_token,expires_at:data.expires_at,athlete:data.athlete||null,activities:[]};
-    save();
-  } else {
-    alert('Connexion Strava échouée : '+(data.error||'inconnue')+'\n\n(As-tu bien ajouté la variable STRAVA_CLIENT_SECRET dans Netlify ?)');
-  }
+  await exchangeStravaCode(code);
   history.replaceState({},'',location.pathname);
   return true;
 }
@@ -1198,9 +1211,20 @@ $('back-group').onclick=()=>openGroup(cur.gid);
   renderHome();
   scheduleAll();
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
-  // Retour de connexion Strava ?
+  // Retour de connexion Strava (web) ?
   if(location.search.indexOf('code=')>-1 || location.search.indexOf('error=')>-1){
     const wasStrava=await handleStravaCallback();
     if(wasStrava){ navView('cardio'); if(DB.strava) stravaSync(); }
+  }
+  // Retour de connexion Strava (app native) via lien profond monsport://strava?code=...
+  if(IS_NATIVE && CAP.Plugins && CAP.Plugins.App){
+    CAP.Plugins.App.addListener('appUrlOpen', async ev=>{
+      const url=(ev && ev.url)||'';
+      if(url.indexOf('strava')>-1){
+        if(CAP.Plugins.Browser) CAP.Plugins.Browser.close().catch(()=>{});
+        const m=url.match(/[?&]code=([^&]+)/);
+        if(m){ navView('cardio'); await exchangeStravaCode(decodeURIComponent(m[1])); }
+      }
+    });
   }
 })();

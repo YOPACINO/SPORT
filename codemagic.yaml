@@ -27,7 +27,11 @@ workflows:
       - name: Signature (certificat avec clé privée + profil)
         script: |
           keychain initialize
-          # Génère une clé privée RSA que Codemagic utilise pour créer le certificat de distribution
+          # Supprime les anciens certificats de distribution orphelins (clé privée perdue -> conflit)
+          for CID in $(app-store-connect certificates list --type IOS_DISTRIBUTION --json 2>/dev/null | jq -r '.[].id' 2>/dev/null); do
+            [ -n "$CID" ] && app-store-connect certificates delete "$CID" 2>/dev/null || true
+          done
+          # Genere une nouvelle cle privee RSA et cree un certificat de distribution frais avec
           openssl genrsa -out /tmp/cert_key.pem 2048
           app-store-connect fetch-signing-files "com.yohan.monsport" \
             --type IOS_APP_STORE \

@@ -165,7 +165,8 @@ function migrate(d){
   d.health = d.health||null;
   d.strava = d.strava||null;
   d.nutrition = d.nutrition||{goalKcal:2200, goalProt:180, days:{}, recent:[], meals:[]};
-  d.coach = d.coach||{vid:{}, note:{}};
+  d.coach = d.coach||{vid:{}, note:{}, photos:{}};
+  d.coach.photos = d.coach.photos||{};
   return d;
 }
 function save(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }catch(e){ alert('Mémoire pleine — supprime quelques photos.'); } }
@@ -271,10 +272,10 @@ function openSheet(id){ $('sheet-bg').classList.add('show'); $(id).classList.add
 function closeSheets(){ if(typeof stopScan==='function') stopScan(); $('sheet-bg').classList.remove('show'); document.querySelectorAll('.sheet').forEach(s=>s.classList.remove('show')); }
 $('sheet-bg').onclick=closeSheets;
 
-function compress(file, cb){
+function compress(file, cb, max=900){
   const r=new FileReader();
   r.onload=ev=>{ const img=new Image(); img.onload=()=>{
-    const max=900,sc=Math.min(1,max/Math.max(img.width,img.height));
+    const sc=Math.min(1,max/Math.max(img.width,img.height));
     const cv=document.createElement('canvas'); cv.width=img.width*sc; cv.height=img.height*sc;
     cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
     cb(cv.toDataURL('image/jpeg',0.7));
@@ -527,21 +528,38 @@ function videoEmbed(url){
   if(m) return 'https://player.vimeo.com/video/'+m[1];
   return null;
 }
+function openImgLightbox(src){
+  let ov=document.getElementById('img-lightbox');
+  if(!ov){ ov=document.createElement('div'); ov.id='img-lightbox';
+    ov.style.cssText='position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.93);display:flex;align-items:center;justify-content:flex-start;overflow:auto;padding:10px';
+    ov.onclick=()=>ov.remove(); document.body.appendChild(ov); }
+  ov.innerHTML='<img src="'+src+'" style="max-height:94vh;min-width:100%;object-fit:contain;border-radius:6px">';
+}
 function renderCoach(containerId,key){
   const c=$(containerId); if(!c) return;
-  DB.coach=DB.coach||{vid:{},note:{}};
-  const url=DB.coach.vid[key], note=DB.coach.note[key], emb=videoEmbed(url);
+  DB.coach=DB.coach||{vid:{},note:{},photos:{}}; DB.coach.photos=DB.coach.photos||{};
+  const url=DB.coach.vid[key], note=DB.coach.note[key], emb=videoEmbed(url), photos=DB.coach.photos[key]||[];
   c.innerHTML=`<div class="section-title">🎥 Coach</div>
     <div class="card">
+      ${photos.length?`<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:6px">`+photos.map((p,i)=>`
+        <div style="position:relative"><img src="${p}" data-img="${i}" style="width:100%;border-radius:10px;display:block;cursor:zoom-in">
+          <span data-del="${i}" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px">✕</span></div>`).join('')+`</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px;text-align:center">Touche une image pour l'agrandir (défilement horizontal si large)</div>`:''}
       ${url?(emb?`<div style="position:relative;padding-bottom:56%;height:0;border-radius:10px;overflow:hidden;margin-bottom:10px"><iframe src="${emb}" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen loading="lazy"></iframe></div>`
         :`<button class="btn sec" id="${containerId}-play" style="margin-bottom:10px">▶ Voir la vidéo de démo</button>`):''}
       ${note?`<div style="font-size:14px;line-height:1.5;white-space:pre-wrap;margin-bottom:10px">${note.replace(/[<>]/g,'')}</div>`:''}
-      <div style="display:flex;gap:8px">
-        <button class="btn ghost" id="${containerId}-vid" style="flex:1;font-size:13px;padding:10px">${url?'Modifier la vidéo':'+ Vidéo démo'}</button>
-        <button class="btn ghost" id="${containerId}-note" style="flex:1;font-size:13px;padding:10px">${note?'Modifier les notes':'+ Notes coach'}</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost" id="${containerId}-addphoto" style="flex:1;min-width:90px;font-size:13px;padding:10px">+ Photo</button>
+        <button class="btn ghost" id="${containerId}-vid" style="flex:1;min-width:90px;font-size:13px;padding:10px">${url?'Vidéo ✎':'+ Vidéo'}</button>
+        <button class="btn ghost" id="${containerId}-note" style="flex:1;min-width:90px;font-size:13px;padding:10px">${note?'Notes ✎':'+ Notes'}</button>
       </div>
+      <input type="file" accept="image/*" id="${containerId}-photoinput" style="display:none">
     </div>`;
   const play=$(containerId+'-play'); if(play) play.onclick=()=>window.open(url,'_blank');
+  c.querySelectorAll('[data-img]').forEach(el=>el.onclick=()=>openImgLightbox(photos[+el.dataset.img]));
+  c.querySelectorAll('[data-del]').forEach(el=>el.onclick=()=>{ photos.splice(+el.dataset.del,1); if(!photos.length) delete DB.coach.photos[key]; else DB.coach.photos[key]=photos; save(); renderCoach(containerId,key); });
+  $(containerId+'-addphoto').onclick=()=>$(containerId+'-photoinput').click();
+  $(containerId+'-photoinput').onchange=e=>{ const f=e.target.files[0]; if(!f)return; compress(f,d=>{ (DB.coach.photos[key]=DB.coach.photos[key]||[]).push(d); save(); renderCoach(containerId,key); },1400); };
   $(containerId+'-vid').onclick=()=>{ const v=prompt('Lien de la vidéo de démo (YouTube ou Vimeo) :', url||''); if(v!==null){ if(v.trim()) DB.coach.vid[key]=v.trim(); else delete DB.coach.vid[key]; save(); renderCoach(containerId,key); } };
   $(containerId+'-note').onclick=()=>{ const t=prompt('Notes / conseils du coach :', note||''); if(t!==null){ if(t.trim()) DB.coach.note[key]=t.trim(); else delete DB.coach.note[key]; save(); renderCoach(containerId,key); } };
 }

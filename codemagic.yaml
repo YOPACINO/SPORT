@@ -19,8 +19,14 @@ workflows:
         script: npm ci || npm install
       - name: Synchroniser Capacitor iOS
         script: npx cap sync ios
-      - name: Récupérer les profils de signature
-        script: xcode-project use-profiles
+      - name: Signature (création auto du certificat + profil App Store)
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "com.yohan.monsport" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Compiler l'IPA
         script: |
           xcode-project build-ipa \

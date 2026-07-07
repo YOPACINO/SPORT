@@ -6,9 +6,12 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
     integrations:
-      # Nom de l'intégration App Store Connect que tu créeras dans Codemagic (Teams > Integrations)
       app_store_connect: MonSport ASC key
     environment:
+      # Signature automatique managée par Codemagic (il génère + conserve la clé privée du certificat)
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.yohan.monsport
       node: 22
       xcode: latest
     scripts:
@@ -20,14 +23,8 @@ workflows:
           cp index.html app.js manifest.json icon.svg sw.js confidentialite.html www/
       - name: Synchroniser Capacitor iOS
         script: npx cap sync ios
-      - name: Signature (création auto du certificat + profil App Store)
-        script: |
-          keychain initialize
-          app-store-connect fetch-signing-files "com.yohan.monsport" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
+      - name: Appliquer les profils de signature
+        script: xcode-project use-profiles
       - name: Compiler l'IPA
         script: |
           xcode-project build-ipa \
@@ -39,5 +36,4 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true   # envoie automatiquement sur TestFlight (test)
-        # submit_to_app_store: false # passe à true quand tu veux soumettre à la review App Store
+        submit_to_testflight: true

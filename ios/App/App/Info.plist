@@ -70,5 +70,11 @@
 	<string>MonSport enregistre vos photos de progression dans votre photothèque.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>MonSport utilise les données de mouvement pour estimer votre activité.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>MonSport peut lire vos données de santé (pas, énergie, séances) pour afficher vos tendances sportives.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>MonSport peut enregistrer des données d'activité dans l'app Santé.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>MonSport utilise votre position pour tracer votre itinéraire pendant une séance cardio.</string>
 </dict>
 </plist>

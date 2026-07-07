@@ -1,0 +1,15 @@
+{
+  "appId": "com.yohan.monsport",
+  "appName": "MonSport",
+  "webDir": "www",
+  "backgroundColor": "#0f1115",
+  "ios": {
+    "contentInset": "always"
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#3b82f6"
+    }
+  }
+}

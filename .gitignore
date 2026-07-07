@@ -1,0 +1,12 @@
+# Dépendances (à régénérer avec `npm install`)
+node_modules/
+
+# Fichiers de build
+www/
+
+# Zip de déploiement Netlify
+monsport-site.zip
+
+# Divers
+.DS_Store
+*.log

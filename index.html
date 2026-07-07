@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MonSport">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<title>MonSport</title>
+<style>
+  :root{
+    --bg:#0f1115; --surface:#181b22; --surface2:#21252f; --line:#2b2f3a;
+    --text:#f2f4f8; --muted:#9aa3b2; --accent:#3b82f6; --accent2:#22c55e;
+    --bras:#7f77dd; --jambes:#1d9e75; --pecs:#d85a30; --dos:#378add;
+    --epaules:#ba7517; --cardio:#d4537e; --abdos:#0f6e56; --radius:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text); font-weight:400;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    padding-bottom:env(safe-area-inset-bottom);
+    -webkit-user-select:none; user-select:none;
+  }
+  .app{max-width:520px; margin:0 auto; min-height:100vh; padding:0 16px 100px;}
+  header{padding:calc(env(safe-area-inset-top) + 18px) 0 12px; display:flex; align-items:center; justify-content:space-between;}
+  header h1{font-size:22px; margin:0; font-weight:600;}
+  header .sub{font-size:13px; color:var(--muted);}
+  header .sub.cap::first-letter{text-transform:uppercase;}
+  .avatar{width:40px; height:40px; border-radius:50%; background:var(--surface2);
+    display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; color:var(--accent);}
+  .stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:6px 0 18px;}
+  .stat{background:var(--surface); border-radius:var(--radius); padding:12px 10px; text-align:center;}
+  .stat .n{font-size:22px; font-weight:600;}
+  .stat .l{font-size:11px; color:var(--muted); margin-top:2px;}
+  .section-title{font-size:14px; font-weight:600; margin:18px 2px 10px; display:flex; justify-content:space-between; align-items:center;}
+  .section-title a{font-size:13px; color:var(--accent); font-weight:400; cursor:pointer;}
+  .groups{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .group{background:var(--surface); border-radius:var(--radius); padding:14px; display:flex; align-items:center; gap:12px; cursor:pointer; border:1px solid transparent; transition:.15s;}
+  .group:active{transform:scale(.97);}
+  .group .dot{width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .group .dot svg{width:22px; height:22px; stroke:#fff; stroke-width:2; fill:none;}
+  .group .name{font-size:15px; font-weight:500;}
+  .group .count{font-size:12px; color:var(--muted);}
+  .card{background:var(--surface); border-radius:var(--radius); padding:14px; margin-bottom:10px;}
+  .ex-row{display:flex; align-items:center; gap:12px; cursor:pointer; padding:12px 14px; background:var(--surface); border-radius:var(--radius); margin-bottom:10px; transition:.15s;}
+  .ex-row:active{transform:scale(.99);}
+  .ex-thumb{width:48px; height:48px; border-radius:12px; background:var(--surface2); flex-shrink:0; background-size:cover; background-position:center; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+  .ex-thumb svg{width:22px; height:22px; stroke:var(--muted); stroke-width:2; fill:none;}
+  .ex-info{flex:1; min-width:0;}
+  .ex-info .t{font-size:15px; font-weight:500;}
+  .ex-info .s{font-size:12px; color:var(--muted); margin-top:2px;}
+  .ex-info .pr{font-size:13px; color:var(--accent2); font-weight:600;}
+  .chev{color:var(--muted); flex-shrink:0;}
+  .btn{display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:15px; border:none; border-radius:14px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; cursor:pointer; font-family:inherit;}
+  .btn:active{transform:scale(.98);}
+  .btn.sec{background:var(--surface2); color:var(--text);}
+  .btn.ghost{background:transparent; border:1px solid var(--line); color:var(--text);}
+  .btn.danger{background:#ef4444;}
+  .btn.green{background:var(--accent2);}
+  .nav{position:fixed; bottom:0; left:0; right:0; background:rgba(15,17,21,.92); backdrop-filter:blur(12px); border-top:1px solid var(--line); display:flex; justify-content:space-around; padding:10px 0 calc(env(safe-area-inset-bottom) + 8px); z-index:30;}
+  .nav a{color:var(--muted); display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; cursor:pointer; text-decoration:none; flex:1;}
+  .nav a svg{width:24px; height:24px; stroke:currentColor; stroke-width:2; fill:none;}
+  .nav a.on{color:var(--accent);}
+  .sheet-bg{position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:40; opacity:0; pointer-events:none; transition:.2s;}
+  .sheet-bg.show{opacity:1; pointer-events:auto;}
+  .sheet{position:fixed; left:0; right:0; bottom:0; z-index:50; background:var(--surface); border-radius:24px 24px 0 0; padding:8px 18px calc(env(safe-area-inset-bottom) + 20px); transform:translateY(100%); transition:.28s cubic-bezier(.3,.7,.3,1); max-height:92vh; overflow-y:auto;}
+  .sheet.show{transform:translateY(0);}
+  .grab{width:38px; height:5px; background:var(--line); border-radius:3px; margin:6px auto 14px;}
+  .sheet h2{font-size:19px; margin:0 0 4px;}
+  .sheet .desc{color:var(--muted); font-size:13px; margin:0 0 16px;}
+  label{display:block; font-size:13px; color:var(--muted); margin:14px 0 6px;}
+  input,select,textarea{width:100%; padding:13px 14px; background:var(--surface2); border:1px solid var(--line); border-radius:12px; color:var(--text); font-size:16px; font-family:inherit; outline:none;}
+  input:focus,select:focus{border-color:var(--accent);}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .photo-pick{display:flex; align-items:center; gap:12px; padding:13px 14px; background:var(--surface2); border:1px dashed var(--line); border-radius:12px; cursor:pointer; margin-top:6px;}
+  .photo-pick svg{width:22px; height:22px; stroke:var(--accent); stroke-width:2; fill:none;}
+  .photo-prev{width:100%; height:170px; object-fit:cover; border-radius:12px; margin-top:10px; display:none;}
+  .empty{text-align:center; color:var(--muted); padding:40px 20px; font-size:14px;}
+  .empty svg{width:46px; height:46px; stroke:var(--line); stroke-width:1.5; fill:none; margin-bottom:12px;}
+  .log-item{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line);}
+  .log-item:last-child{border:none;}
+  .log-item .d{font-size:13px; color:var(--muted); width:74px; flex-shrink:0;}
+  .log-item .v{font-size:15px; font-weight:600; flex:1;}
+  .log-item img{width:42px; height:42px; border-radius:8px; object-fit:cover;}
+  .back{display:flex; align-items:center; gap:6px; color:var(--accent); font-size:15px; cursor:pointer; padding:8px 0; margin-left:-4px;}
+  .back svg{width:20px; height:20px; stroke:currentColor; stroke-width:2; fill:none;}
+  .chart-wrap{height:200px; margin:10px 0 6px;}
+  .badge{font-size:11px; padding:4px 10px; border-radius:12px; background:var(--surface2); color:var(--muted);}
+  .delete{color:#ef4444; font-size:13px; cursor:pointer;}
+  .pill-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;}
+  .pill{font-size:13px; padding:8px 14px; border-radius:20px; background:var(--surface2); border:1px solid var(--line); cursor:pointer; white-space:nowrap;}
+  .pill:active{transform:scale(.96);}
+  canvas{max-width:100%;}
+  .hide{display:none !important;}
+
+  /* Cardio / carte */
+  #map, .minimap{width:100%; border-radius:14px; background:var(--surface2);}
+  #map{height:300px;}
+  .minimap{height:120px; pointer-events:none;}
+  .live-stats{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0;}
+  .live-stat{background:var(--surface); border-radius:var(--radius); padding:16px; text-align:center;}
+  .live-stat .n{font-size:30px; font-weight:700; line-height:1;}
+  .live-stat .l{font-size:12px; color:var(--muted); margin-top:6px;}
+  .act-pick{display:flex; gap:10px; margin-bottom:16px;}
+  .act-pick .ap{flex:1; background:var(--surface); border:2px solid transparent; border-radius:var(--radius); padding:16px 8px; text-align:center; cursor:pointer;}
+  .act-pick .ap.on{border-color:var(--cardio);}
+  .act-pick .ap svg{width:26px; height:26px; stroke:var(--cardio); stroke-width:2; fill:none;}
+  .act-pick .ap div{font-size:13px; margin-top:6px; font-weight:500;}
+  .leaflet-container{font-family:inherit;}
+
+  /* Photos */
+  .photo-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;}
+  .photo-grid .pg{position:relative; aspect-ratio:1; border-radius:10px; overflow:hidden; background:var(--surface2);}
+  .photo-grid .pg img{width:100%; height:100%; object-fit:cover;}
+  .photo-grid .pg .cap{position:absolute; left:0; right:0; bottom:0; font-size:10px; padding:3px 5px; background:linear-gradient(transparent,rgba(0,0,0,.8)); color:#fff;}
+
+  /* Bien-être / routines */
+  .tabs{display:flex; gap:8px; margin:6px 0 16px; background:var(--surface); padding:5px; border-radius:14px;}
+  .tabs .tab{flex:1; text-align:center; padding:10px; border-radius:10px; font-size:14px; font-weight:500; cursor:pointer; color:var(--muted);}
+  .tabs .tab.on{background:var(--surface2); color:var(--text);}
+  .routine{background:var(--surface); border-radius:var(--radius); padding:16px; margin-bottom:10px; cursor:pointer;}
+  .routine .rt{font-size:16px; font-weight:600; display:flex; justify-content:space-between; align-items:center;}
+  .routine .rs{font-size:13px; color:var(--muted); margin-top:4px;}
+  .routine .ico{width:40px; height:40px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .routine .ico svg{width:22px; height:22px; stroke:#fff; stroke-width:2; fill:none;}
+  .check-step{display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid var(--line); cursor:pointer;}
+  .check-step:last-child{border:none;}
+  .check-step .cb{width:26px; height:26px; border-radius:50%; border:2px solid var(--line); flex-shrink:0; display:flex; align-items:center; justify-content:center;}
+  .check-step.done .cb{background:var(--accent2); border-color:var(--accent2);}
+  .check-step .cb svg{width:16px; height:16px; stroke:#fff; stroke-width:3; fill:none; opacity:0;}
+  .check-step.done .cb svg{opacity:1;}
+  .check-step.done .ct{color:var(--muted); text-decoration:line-through;}
+  .check-step .ct{font-size:15px;}
+  .reminder-row{display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-bottom:1px solid var(--line);}
+  .reminder-row:last-child{border:none;}
+  .switch{width:50px; height:30px; border-radius:15px; background:var(--surface2); position:relative; cursor:pointer; transition:.2s; flex-shrink:0;}
+  .switch.on{background:var(--accent2);}
+  .switch::after{content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; transition:.2s;}
+  .switch.on::after{left:23px;}
+  .timer-big{font-size:64px; font-weight:700; text-align:center; font-variant-numeric:tabular-nums; margin:8px 0;}
+  .timer-name{font-size:24px; font-weight:600; text-align:center;}
+  .timer-next{font-size:14px; color:var(--muted); text-align:center; margin-top:8px;}
+  .progress-dots{display:flex; gap:6px; justify-content:center; margin:18px 0;}
+  .progress-dots .pd{width:8px; height:8px; border-radius:50%; background:var(--line);}
+  .progress-dots .pd.on{background:var(--accent);}
+  .progress-dots .pd.done{background:var(--accent2);}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== ACCUEIL ===== -->
+  <div id="view-home">
+    <header>
+      <div><h1 id="hello">Salut 👋</h1><div class="sub cap" id="todaydate"></div></div>
+      <div class="avatar" id="avatar">M</div>
+    </header>
+    <div class="stats">
+      <div class="stat"><div class="n" id="st-seances">0</div><div class="l">Séances</div></div>
+      <div class="stat"><div class="n" id="st-volume">0</div><div class="l">Volume (t)</div></div>
+      <div class="stat"><div class="n" id="st-km">0</div><div class="l">Km courus</div></div>
+    </div>
+    <div class="section-title">Groupes musculaires</div>
+    <div class="groups" id="groups"></div>
+    <div class="section-title">Dernières séances</div>
+    <div id="recent"></div>
+  </div>
+
+  <!-- ===== GROUPE ===== -->
+  <div id="view-group" class="hide">
+    <div class="back" data-go="home"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Accueil</div>
+    <header style="padding-top:6px"><div><h1 id="group-title">Pecs</h1><div class="sub" id="group-sub">0 exercices</div></div></header>
+    <div id="ex-list"></div>
+    <button class="btn ghost" id="add-ex" style="margin-top:6px"><svg style="width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter un exercice</button>
+  </div>
+
+  <!-- ===== EXERCICE ===== -->
+  <div id="view-ex" class="hide">
+    <div class="back" id="back-group"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Retour</div>
+    <header style="padding-top:6px"><div><h1 id="ex-title">Développé couché</h1><div class="sub" id="ex-sub">Pecs</div></div></header>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px">
+        <div style="font-size:13px; color:var(--muted)">Progression du poids</div>
+        <div class="badge" id="ex-pr">PR —</div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart"></canvas></div>
+    </div>
+    <button class="btn" id="add-log" style="margin:6px 0 16px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Nouvelle série</button>
+    <div id="ex-coach"></div>
+    <div class="section-title">Historique</div>
+    <div class="card" id="ex-history"></div>
+  </div>
+
+  <!-- ===== CARDIO ===== -->
+  <div id="view-cardio" class="hide">
+    <header><div><h1>Cardio</h1><div class="sub">Course · vélo · marche</div></div></header>
+    <div id="strava-box"></div>
+    <div class="act-pick" id="act-pick">
+      <div class="ap on" data-act="Course"><svg viewBox="0 0 24 24"><path d="M13 4l-2 7h4l-2 9"/><circle cx="12" cy="12" r="9"/></svg><div>Course</div></div>
+      <div class="ap" data-act="Vélo"><svg viewBox="0 0 24 24"><circle cx="6" cy="17" r="3"/><circle cx="18" cy="17" r="3"/><path d="M6 17l3-7h5l3 7M9 10l2-4h3"/></svg><div>Vélo</div></div>
+      <div class="ap" data-act="Marche"><svg viewBox="0 0 24 24"><circle cx="12" cy="4" r="2"/><path d="M12 6v6l-3 6m3-6l3 6M9 9h6"/></svg><div>Marche</div></div>
+    </div>
+    <button class="btn green" id="start-gps"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg> Démarrer la séance</button>
+    <div class="section-title" style="margin-top:24px">Mes sorties</div>
+    <div id="cardio-history"></div>
+  </div>
+
+  <!-- ===== CARDIO LIVE ===== -->
+  <div id="view-live" class="hide">
+    <header><div><h1 id="live-act">Course</h1><div class="sub" id="live-status">Acquisition GPS…</div></div></header>
+    <div id="map"></div>
+    <div class="live-stats">
+      <div class="live-stat"><div class="n" id="live-dist">0.00</div><div class="l">Distance (km)</div></div>
+      <div class="live-stat"><div class="n" id="live-time">00:00</div><div class="l">Durée</div></div>
+      <div class="live-stat"><div class="n" id="live-pace">—</div><div class="l">Allure (/km)</div></div>
+      <div class="live-stat"><div class="n" id="live-speed">0.0</div><div class="l">Vitesse (km/h)</div></div>
+    </div>
+    <button class="btn danger" id="stop-gps">Terminer & enregistrer</button>
+    <button class="btn ghost" id="cancel-gps" style="margin-top:8px">Annuler</button>
+  </div>
+
+  <!-- ===== CARDIO DETAIL ===== -->
+  <div id="view-cardio-detail" class="hide">
+    <div class="back" data-go="cardio"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Cardio</div>
+    <header style="padding-top:6px"><div><h1 id="cd-act">Course</h1><div class="sub cap" id="cd-date"></div></div></header>
+    <div id="cd-map" style="height:240px; border-radius:14px; background:var(--surface2); margin-bottom:12px"></div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="cd-dist">0</div><div class="l">km</div></div>
+      <div class="stat"><div class="n" id="cd-time">0</div><div class="l">durée</div></div>
+      <div class="stat"><div class="n" id="cd-pace">—</div><div class="l">allure</div></div>
+    </div>
+    <button class="btn ghost danger" id="cd-delete" style="margin-top:8px; border-color:#ef4444; color:#ef4444; background:transparent">Supprimer cette sortie</button>
+  </div>
+
+  <!-- ===== PHOTOS ===== -->
+  <div id="view-photos" class="hide">
+    <header><div><h1>Évolution</h1><div class="sub">Tes photos dans le temps</div></div></header>
+    <button class="btn" id="add-progress-photo" style="margin-bottom:16px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Ajouter une photo d'évolution</button>
+    <div id="photos-grid"></div>
+  </div>
+
+  <!-- ===== SANTÉ (import Apple Santé) ===== -->
+  <div id="view-sante" class="hide">
+    <header><div><h1>Santé</h1><div class="sub">Sommeil · pas · Apple Watch</div></div></header>
+    <div class="card" id="health-intro">
+      <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px">
+        <div style="width:42px;height:42px;border-radius:12px;background:#d4537e;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg style="width:24px;height:24px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M20 9a5 5 0 00-8-4 5 5 0 00-8 4c0 6 8 10 8 10s8-4 8-10z"/></svg>
+        </div>
+        <div><div style="font-weight:600">Importe tes données Apple Santé</div><div style="font-size:13px;color:var(--muted)">Sommeil, pas, fréquence cardiaque, séances Apple Watch</div></div>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin:6px 0 0">📱 Sur iPhone : app <b>Santé</b> → ta photo → <b>« Exporter toutes les données Santé »</b> → ouvre le fichier <code style="font-size:12px">.zip</code> ici. 🔒 Tout est lu sur ton téléphone, rien n'est envoyé en ligne.</p>
+    </div>
+    <button class="btn" id="import-health" style="margin-bottom:8px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg> Importer mon fichier Santé</button>
+    <input type="file" accept=".zip,.xml" id="health-file" class="hide">
+    <div id="health-status" style="text-align:center;color:var(--muted);font-size:13px;padding:6px 0"></div>
+    <div id="health-content"></div>
+  </div>
+
+  <!-- ===== NUTRITION ===== -->
+  <div id="view-nutrition" class="hide">
+    <header><div><h1>Nutrition</h1><div class="sub cap" id="nut-date"></div></div><div class="avatar" id="nut-goals-btn" style="cursor:pointer"><svg style="width:20px;height:20px;stroke:var(--accent);stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 3v2M12 19v2M3 12h2M19 12h2M12 8a4 4 0 100 8 4 4 0 000-8z"/></svg></div></header>
+    <div id="nut-summary"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:14px 0">
+      <button class="btn" id="nut-scan" style="flex-direction:column;gap:4px;padding:12px 4px;font-size:12px"><svg style="width:22px;height:22px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>Scanner</button>
+      <button class="btn sec" id="nut-search" style="flex-direction:column;gap:4px;padding:12px 4px;font-size:12px"><svg style="width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>Rechercher</button>
+      <button class="btn sec" id="nut-manual" style="flex-direction:column;gap:4px;padding:12px 4px;font-size:12px"><svg style="width:22px;height:22px;stroke:currentColor;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Manuel</button>
+    </div>
+    <div id="nut-recent"></div>
+    <div class="section-title">Aujourd'hui <a id="nut-savemeal">Enregistrer en repas</a></div>
+    <div id="nut-list"></div>
+    <div id="nut-meals"></div>
+  </div>
+
+  <!-- ===== DÉTAIL SANTÉ (période + moyennes) ===== -->
+  <div id="view-hdetail" class="hide">
+    <div class="back" data-go="sante"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Santé</div>
+    <header style="padding-top:6px"><div><h1 id="hd-title">Sommeil</h1><div class="sub" id="hd-sub"></div></div></header>
+    <div class="tabs" id="hd-tabs"></div>
+    <div id="hd-content"></div>
+  </div>
+
+  <!-- ===== BIEN-ÊTRE (étirements + soin) ===== -->
+  <div id="view-wellness" class="hide">
+    <header><div><h1>Bien-être</h1><div class="sub">Étirements & routines soin</div></div></header>
+    <div class="tabs" id="well-tabs">
+      <div class="tab on" data-tab="stretch">Étirements</div>
+      <div class="tab" data-tab="beauty">Soin / Beauté</div>
+      <div class="tab" data-tab="remind">Rappels</div>
+    </div>
+    <div id="tab-stretch"></div>
+    <div id="tab-beauty" class="hide"></div>
+    <div id="tab-remind" class="hide"></div>
+  </div>
+
+  <!-- ===== ROUTINE CHECKLIST (soin) ===== -->
+  <div id="view-routine" class="hide">
+    <div class="back" data-go="wellness"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Bien-être</div>
+    <header style="padding-top:6px"><div><h1 id="rt-title">Routine</h1><div class="sub" id="rt-sub"></div></div></header>
+    <div class="card" id="rt-steps"></div>
+    <button class="btn ghost" id="rt-reset" style="margin-top:6px">Réinitialiser</button>
+  </div>
+
+  <!-- ===== LISTE ÉTIREMENTS (zone / objectif) ===== -->
+  <div id="view-slist" class="hide">
+    <div class="back" data-go="wellness"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Bien-être</div>
+    <header style="padding-top:6px"><div><h1 id="slist-title">Zone</h1><div class="sub" id="slist-sub"></div></div></header>
+    <button class="btn" id="slist-runall" style="margin-bottom:14px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg> Enchaîner tout (minuteur)</button>
+    <div id="slist-content"></div>
+  </div>
+
+  <!-- ===== DÉTAIL ÉTIREMENT ===== -->
+  <div id="view-stretch-detail" class="hide">
+    <div class="back" id="sd-back"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Retour</div>
+    <header style="padding-top:6px"><div><h1 id="sd-title">Étirement</h1><div class="sub" id="sd-sub"></div></div></header>
+    <div class="card" style="display:flex;gap:16px;align-items:center">
+      <div id="sd-body" style="width:110px;height:150px;flex-shrink:0"></div>
+      <div style="flex:1"><div style="font-size:12px;color:var(--muted);margin-bottom:4px">Muscle ciblé</div><div id="sd-target" style="font-size:16px;font-weight:600"></div><div id="sd-photo-wrap" style="margin-top:10px"></div></div>
+    </div>
+    <div class="section-title">Comment faire</div>
+    <div class="card" id="sd-steps"></div>
+    <div id="sd-coach"></div>
+    <button class="btn" id="sd-start" style="margin-top:6px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg> Démarrer le minuteur</button>
+    <button class="btn ghost" id="sd-addphoto" style="margin-top:8px"><svg style="width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/></svg> Ajouter ma photo de la position</button>
+    <input type="file" accept="image/*" id="sd-photo-input" class="hide">
+  </div>
+
+  <!-- ===== STRETCH PLAYER ===== -->
+  <div id="view-stretch-play" class="hide">
+    <div class="back" data-go="wellness"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg> Quitter</div>
+    <header style="padding-top:6px"><div><h1 id="sp-title">Étirements</h1><div class="sub" id="sp-sub"></div></div></header>
+    <div class="progress-dots" id="sp-dots"></div>
+    <div class="card" style="padding:30px 16px">
+      <div class="timer-name" id="sp-name">Prêt ?</div>
+      <div class="timer-big" id="sp-timer">00</div>
+      <div class="timer-next" id="sp-next"></div>
+    </div>
+    <button class="btn" id="sp-toggle" style="margin-top:8px">Démarrer</button>
+    <button class="btn ghost" id="sp-skip" style="margin-top:8px">Passer →</button>
+  </div>
+
+</div>
+
+<!-- NAV -->
+<nav class="nav">
+  <a class="on" data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>Accueil</a>
+  <a data-nav="cardio"><svg viewBox="0 0 24 24"><path d="M13 4l-2 7h4l-2 9"/><circle cx="12" cy="12" r="9"/></svg>Cardio</a>
+  <a data-nav="nutrition"><svg viewBox="0 0 24 24"><path d="M12 8c-1.8-3-6-2.2-6 2 0 4 3.2 9 6 9s6-5 6-9c0-4.2-4.2-5-6-2z"/><path d="M12 8c0-2 .5-3.5 2.5-4.5"/></svg>Nutrition</a>
+  <a data-nav="sante"><svg viewBox="0 0 24 24"><path d="M3 12h4l2-5 3 10 2-6 1.5 3H21"/></svg>Santé</a>
+  <a data-nav="photos"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg>Photos</a>
+  <a data-nav="wellness"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="M12 8v6m0 0l-4 6m4-6l4 6M7 11h10"/></svg>Bien-être</a>
+</nav>
+
+<!-- SHEET série -->
+<div class="sheet-bg" id="sheet-bg"></div>
+<div class="sheet" id="sheet-log">
+  <div class="grab"></div>
+  <h2 id="log-h">Nouvelle série</h2>
+  <p class="desc" id="log-desc"></p>
+  <div class="row2">
+    <div><label>Poids (kg)</label><input type="number" inputmode="decimal" id="in-weight" placeholder="80"></div>
+    <div><label>Répétitions</label><input type="number" inputmode="numeric" id="in-reps" placeholder="10"></div>
+  </div>
+  <div class="row2">
+    <div><label>Séries</label><input type="number" inputmode="numeric" id="in-sets" value="1"></div>
+    <div><label>Date</label><input type="date" id="in-date"></div>
+  </div>
+  <label>Photo (optionnel)</label>
+  <div class="photo-pick" id="photo-pick">
+    <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <span id="photo-label">Ajouter une photo</span>
+  </div>
+  <input type="file" accept="image/*" id="in-photo" class="hide">
+  <img class="photo-prev" id="photo-prev">
+  <button class="btn" id="save-log" style="margin-top:18px">Enregistrer</button>
+</div>
+
+<!-- SHEET exercice -->
+<div class="sheet" id="sheet-ex">
+  <div class="grab"></div>
+  <h2>Nouvel exercice</h2>
+  <p class="desc" id="ex-add-desc"></p>
+  <label>Nom de l'exercice</label>
+  <input type="text" id="in-exname" placeholder="ex. Développé incliné">
+  <button class="btn" id="save-ex" style="margin-top:18px">Créer l'exercice</button>
+</div>
+
+<!-- SHEET photo évolution -->
+<div class="sheet" id="sheet-photo">
+  <div class="grab"></div>
+  <h2>Photo d'évolution</h2>
+  <p class="desc">Prends-toi en photo régulièrement pour suivre ton évolution physique.</p>
+  <div class="photo-pick" id="pp-pick">
+    <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/></svg>
+    <span id="pp-label">Choisir une photo</span>
+  </div>
+  <input type="file" accept="image/*" id="pp-photo" class="hide">
+  <img class="photo-prev" id="pp-prev">
+  <label>Note (optionnel)</label>
+  <input type="text" id="pp-note" placeholder="ex. Fin de sèche, 78 kg">
+  <button class="btn" id="pp-save" style="margin-top:18px">Enregistrer</button>
+</div>
+
+<!-- SHEET scanner code-barres -->
+<div class="sheet" id="sheet-scan">
+  <div class="grab"></div>
+  <h2>Scanner un code-barres</h2>
+  <p class="desc">Vise le code-barres du produit avec ta caméra.</p>
+  <div id="reader" style="width:100%;border-radius:12px;overflow:hidden;background:#000;min-height:220px"></div>
+  <div id="scan-status" style="text-align:center;color:var(--muted);font-size:13px;padding:10px 0"></div>
+  <button class="btn ghost" id="scan-close" style="margin-top:8px">Fermer</button>
+</div>
+
+<!-- SHEET ajout aliment -->
+<div class="sheet" id="sheet-addfood">
+  <div class="grab"></div>
+  <h2 id="af-h">Ajouter un aliment</h2>
+  <p class="desc" id="af-brand"></p>
+  <label>Nom</label>
+  <input type="text" id="af-name" placeholder="ex. Skyr nature">
+  <div class="section-title" style="margin:14px 2px 6px">Valeurs pour 100 g</div>
+  <div class="row2">
+    <div><label>Calories (kcal)</label><input type="number" inputmode="decimal" id="af-kcal" placeholder="63"></div>
+    <div><label>Protéines (g)</label><input type="number" inputmode="decimal" id="af-prot" placeholder="11"></div>
+  </div>
+  <div class="row2">
+    <div><label>Glucides (g)</label><input type="number" inputmode="decimal" id="af-carb" placeholder="4"></div>
+    <div><label>Lipides (g)</label><input type="number" inputmode="decimal" id="af-fat" placeholder="0.2"></div>
+  </div>
+  <label>Quantité (g)</label>
+  <input type="number" inputmode="decimal" id="af-qty" value="100">
+  <div class="card" id="af-total" style="margin-top:12px;text-align:center"></div>
+  <button class="btn" id="af-save" style="margin-top:14px">Ajouter au journal</button>
+</div>
+
+<!-- SHEET recherche -->
+<div class="sheet" id="sheet-search">
+  <div class="grab"></div>
+  <h2>Rechercher un aliment</h2>
+  <p class="desc">Base Open Food Facts (produits du monde entier).</p>
+  <div style="display:flex;gap:8px">
+    <input type="text" id="sf-input" placeholder="ex. skyr, poulet, banane…" style="flex:1">
+    <button class="btn" id="sf-go" style="width:auto;padding:0 18px">OK</button>
+  </div>
+  <div id="sf-results" style="margin-top:12px"></div>
+</div>
+
+<!-- SHEET objectifs -->
+<div class="sheet" id="sheet-goals">
+  <div class="grab"></div>
+  <h2>Mes objectifs</h2>
+  <p class="desc">Tes cibles quotidiennes.</p>
+  <div class="row2">
+    <div><label>Calories (kcal)</label><input type="number" inputmode="numeric" id="g-kcal" value="2200"></div>
+    <div><label>Protéines (g)</label><input type="number" inputmode="numeric" id="g-prot" value="180"></div>
+  </div>
+  <button class="btn" id="g-save" style="margin-top:16px">Enregistrer</button>
+</div>
+
+<!-- SHEET repas type -->
+<div class="sheet" id="sheet-meal">
+  <div class="grab"></div>
+  <h2>Enregistrer un repas type</h2>
+  <p class="desc">Sauvegarde les aliments d'aujourd'hui comme repas réutilisable en 1 clic.</p>
+  <label>Nom du repas</label>
+  <input type="text" id="meal-name" placeholder="ex. Petit-déj protéiné">
+  <button class="btn" id="meal-save" style="margin-top:16px">Enregistrer</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

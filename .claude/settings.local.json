@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__visualize__read_me",
+      "mcp__visualize__show_widget",
+      "Bash(node -e \"console.log\\('node ok'\\)\")",
+      "Bash(node -e ' *)",
+      "mcp__playwright__browser_navigate",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"try{new Function\\(require\\('fs'\\).readFileSync\\('app.js','utf8'\\)\\);console.log\\('✅ app.js syntaxe OK'\\);}catch\\(e\\){console.log\\('❌',e.message\\);process.exit\\(1\\);}\")",
+      "PowerShell($src = \"C:\\\\MONTAGE VIDEO\\\\CLAUDE\\\\SPORT\"; $files = @\\(\"index.html\",\"app.js\",\"manifest.json\",\"icon.svg\",\"sw.js\",\"LISEZ-MOI.md\"\\) | ForEach-Object { Join-Path $src $_ }; $zip = Join-Path $src \"monsport-site.zip\"; if \\(Test-Path $zip\\) { Remove-Item $zip -Force }; Compress-Archive -Path $files -DestinationPath $zip -Force; if \\(Test-Path $zip\\) { \"OK -> $zip\"; \"{0:N0} Ko\" -f \\(\\(Get-Item $zip\\).Length/1KB\\) })",
+      "PowerShell(Start-Sleep -Milliseconds 500; $src = \"C:\\\\MONTAGE VIDEO\\\\CLAUDE\\\\SPORT\"; $names = @\\(\"index.html\",\"app.js\",\"manifest.json\",\"icon.svg\",\"sw.js\",\"LISEZ-MOI.md\"\\); $files = $names | ForEach-Object { Join-Path $src $_ }; $zip = Join-Path $src \"monsport-site.zip\"; if \\(Test-Path $zip\\) { Remove-Item $zip -Force }; Compress-Archive -Path $files -DestinationPath $zip -Force; if \\(Test-Path $zip\\) { Add-Type -AssemblyName System.IO.Compression.FileSystem; $z=[System.IO.Compression.ZipFile]::OpenRead\\($zip\\); \"Contenu du zip:\"; $z.Entries | ForEach-Object { \"  - \" + $_.FullName + \" \\(\" + [math]::Round\\($_.Length/1KB,1\\) + \" Ko\\)\" }; $z.Dispose\\(\\); \"\"; \"Total: \" + \\(\"{0:N0}\" -f \\(\\(Get-Item $zip\\).Length/1KB\\)\\) + \" Ko\" })",
+      "WebFetch(domain:graceful-capybara-5c8190.netlify.app)",
+      "Bash(node -e \"try{new Function\\(require\\('fs'\\).readFileSync\\('app.js','utf8'\\)\\);console.log\\('✅ app.js OK'\\);}catch\\(e\\){console.log\\('❌ app.js:',e.message\\);process.exit\\(1\\);}\")",
+      "Bash(node -e \"try{require\\('./netlify/functions/strava.js'\\);console.log\\('✅ strava.js \\(fonction\\) OK'\\);}catch\\(e\\){console.log\\('❌ strava.js:',e.message\\);process.exit\\(1\\);}\")",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "mcp__Claude_in_Chrome__select_browser",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__find",
+      "mcp__Claude_in_Chrome__file_upload",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__form_input",
+      "Bash(node -e \"try{new Function\\(require\\('fs'\\).readFileSync\\('app.js','utf8'\\)\\);console.log\\('✅ app.js OK'\\);}catch\\(e\\){console.log\\('❌',e.message\\);process.exit\\(1\\);}\")",
+      "WebFetch(domain:support.apple.com)",
+      "Bash(node -e \"try{require\\('./netlify/functions/off.js'\\);console.log\\('✅ off.js OK'\\);}catch\\(e\\){console.log\\('❌',e.message\\);process.exit\\(1\\);}\")",
+      "mcp__claude-in-chrome__select_browser",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer",
+      "WebSearch",
+      "Bash(find \"C:/MONTAGE VIDEO/CLAUDE/SPORT\" -iname \"*.pdf\" 2>/dev/null; echo \"---scratchpad---\"; find \"C:/Users/UTILIS~1/AppData/Local/Temp/claude\" -iname \"*.pdf\" 2>/dev/null | head; echo \"---fin---\")",
+      "Bash(awk '{printf \"%-55s %8.1f Mo\\\\n\", $NF, $5/1048576}')",
+      "Bash(python -c \"import pypdf; print\\('pypdf OK'\\)\")",
+      "Bash(python -c \"import pdfplumber; print\\('pdfplumber OK'\\)\")",
+      "Bash(python -c \"import fitz; print\\('pymupdf OK'\\)\")",
+      "Bash(npm init *)",
+      "Bash(npm install *)",
+      "Bash(mkdir -p www)",
+      "Bash(cp index.html app.js manifest.json icon.svg sw.js confidentialite.html www/)",
+      "Bash(npx cap *)"
+    ]
+  }
+}

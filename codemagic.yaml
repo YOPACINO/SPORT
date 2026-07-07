@@ -1,0 +1,36 @@
+# Configuration de build cloud Codemagic — compile MonSport iOS sans Mac, depuis Windows.
+# Doc : https://docs.codemagic.io/yaml-quick-start/building-a-capacitor-app/
+workflows:
+  ios-monsport:
+    name: MonSport iOS
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      # Nom de l'intégration App Store Connect que tu créeras dans Codemagic (Teams > Integrations)
+      app_store_connect: MonSport ASC key
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.yohan.monsport
+      node: 20
+      xcode: latest
+    scripts:
+      - name: Installer les dépendances
+        script: npm ci || npm install
+      - name: Synchroniser Capacitor iOS
+        script: npx cap sync ios
+      - name: Récupérer les profils de signature
+        script: xcode-project use-profiles
+      - name: Compiler l'IPA
+        script: |
+          xcode-project build-ipa \
+            --project "ios/App/App.xcodeproj" \
+            --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true   # envoie automatiquement sur TestFlight (test)
+        # submit_to_app_store: false # passe à true quand tu veux soumettre à la review App Store

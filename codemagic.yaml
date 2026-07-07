@@ -19,6 +19,11 @@ workflows:
           cp index.html app.js manifest.json icon.svg sw.js confidentialite.html www/
       - name: Synchroniser Capacitor iOS
         script: npx cap sync ios
+      - name: Numéro de build unique (incrémenté depuis App Store Connect)
+        script: |
+          LATEST=$(app-store-connect get-latest-testflight-build-number "6788514576" 2>/dev/null || echo 0)
+          cd ios/App
+          agvtool new-version -all $(($LATEST + 1))
       - name: Signature (certificat avec clé privée + profil)
         script: |
           keychain initialize

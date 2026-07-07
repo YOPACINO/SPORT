@@ -8,6 +8,8 @@ workflows:
     integrations:
       app_store_connect: MonSport ASC key
     environment:
+      groups:
+        - signing          # contient CERTIFICATE_PRIVATE_KEY (clé privée fixe du certificat)
       node: 22
       xcode: latest
     scripts:
@@ -24,18 +26,14 @@ workflows:
           LATEST=$(app-store-connect get-latest-testflight-build-number "6788514576" 2>/dev/null || echo 0)
           cd ios/App
           agvtool new-version -all $(($LATEST + 1))
-      - name: Signature (certificat avec clé privée + profil)
+      - name: Signature (clé privée fixe réutilisée + profil)
         script: |
           keychain initialize
-          # Supprime les anciens certificats de distribution orphelins (clé privée perdue -> conflit)
-          for CID in $(app-store-connect certificates list --type IOS_DISTRIBUTION --json 2>/dev/null | jq -r '.[].id' 2>/dev/null); do
-            [ -n "$CID" ] && app-store-connect certificates delete "$CID" 2>/dev/null || true
-          done
-          # Genere une nouvelle cle privee RSA et cree un certificat de distribution frais avec
-          openssl genrsa -out /tmp/cert_key.pem 2048
+          # Utilise la clé privée FIXE (env var CERTIFICATE_PRIVATE_KEY) : réutilise le même
+          # certificat à chaque build (plus de 409 "already have a certificate", plus de limite).
           app-store-connect fetch-signing-files "com.yohan.monsport" \
             --type IOS_APP_STORE \
-            --certificate-key @file:/tmp/cert_key.pem \
+            --certificate-key @env:CERTIFICATE_PRIVATE_KEY \
             --create
           keychain add-certificates
           xcode-project use-profiles

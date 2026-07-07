@@ -37,7 +37,11 @@
       "Bash(npm install *)",
       "Bash(mkdir -p www)",
       "Bash(cp index.html app.js manifest.json icon.svg sw.js confidentialite.html www/)",
-      "Bash(npx cap *)"
+      "Bash(npx cap *)",
+      "Bash(git config *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

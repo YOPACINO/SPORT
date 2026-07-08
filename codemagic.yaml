@@ -48,4 +48,5 @@ workflows:
     publishing:
       app_store_connect:
         auth: integration
-        submit_to_testflight: true
+        # Upload uniquement : les testeurs internes reçoivent le build automatiquement
+        # (pas d'envoi auto à la revue externe, qui bloque si un build est déjà en revue)

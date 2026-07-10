@@ -165,6 +165,7 @@ function migrate(d){
   d.health = d.health||null;
   d.strava = d.strava||null;
   d.nutrition = d.nutrition||{goalKcal:2200, goalProt:180, days:{}, recent:[], meals:[]};
+  d.nutrition.daily = d.nutrition.daily||[];   // compléments / aliments quotidiens (ajout 1 clic)
   d.coach = d.coach||{vid:{}, note:{}, photos:{}};
   d.coach.photos = d.coach.photos||{};
   return d;
@@ -245,12 +246,15 @@ function openExo(gid,eid){
   $('ex-pr').textContent=pr?'PR '+pr+' kg':'PR —';
   const sorted=[...e.logs].sort((a,b)=>a.date<b.date?-1:1);
   drawChart(sorted,g.color);
-  $('ex-history').innerHTML=sorted.length?[...sorted].reverse().map(l=>`
-    <div class="log-item">
+  $('ex-history').innerHTML=sorted.length?[...sorted].reverse().map(l=>{
+    const nS=l.series?l.series.length:(l.sets||1);
+    const detail=(l.series&&l.series.length)?`<div style="font-size:11px;color:var(--muted);font-weight:400;margin-top:3px">${l.series.map(s=>(s.w||0)+'×'+(s.reps||0)).join('   ·   ')}</div>`:'';
+    return `<div class="log-item">
       ${l.photo?`<img src="${l.photo}">`:''}
       <div class="d">${fmtDate(l.date)}</div>
-      <div class="v">${l.weight||0} kg ${l.reps?'× '+l.reps:''} ${l.sets>1?'· '+l.sets+' séries':''}</div>
-      <span class="delete" data-i="${l.id}">Suppr</span></div>`).join('')
+      <div class="v">${nS>1?'moy. ':''}${l.weight||0} kg${l.reps?' × '+l.reps:''}${nS>1?' · '+nS+' séries':''}${detail}</div>
+      <span class="delete" data-i="${l.id}">Suppr</span></div>`;
+  }).join('')
     :`<div class="empty" style="padding:24px">Pas encore de série.<br>Clique sur « Nouvelle série » 👆</div>`;
   document.querySelectorAll('#ex-history .delete').forEach(el=>el.onclick=()=>{
     e.logs=e.logs.filter(l=>l.id!=el.dataset.i); save(); openExo(gid,eid);
@@ -283,20 +287,52 @@ function compress(file, cb, max=900){
   r.readAsDataURL(file);
 }
 
+// ---- Constructeur de séries (on saisit les N séries à la fin, moyenne calculée) ----
+function gatherSeries(){
+  return [...document.querySelectorAll('#series-list .series-row')].map(row=>({
+    w:parseFloat(row.querySelector('.s-w').value)||0,
+    reps:parseInt(row.querySelector('.s-r').value)||0
+  }));
+}
+function seriesAvg(rows){
+  const r=rows.filter(s=>s.w||s.reps);
+  if(!r.length) return null;
+  return { w:+(r.reduce((s,x)=>s+x.w,0)/r.length).toFixed(1), reps:Math.round(r.reduce((s,x)=>s+x.reps,0)/r.length), n:r.length };
+}
+function updateSeriesAvg(){
+  const a=seriesAvg(gatherSeries());
+  $('series-avg').textContent=a?('Moyenne '+a.w+' kg × '+a.reps):'';
+}
+function renderSeriesRows(rows){
+  $('series-list').innerHTML=rows.map((s,i)=>`
+    <div class="row2 series-row" data-i="${i}" style="margin-bottom:8px;align-items:end;grid-template-columns:1fr 1fr auto;gap:8px">
+      <div><label style="font-size:11px">Série ${i+1} · poids (kg)</label><input type="number" inputmode="decimal" class="s-w" placeholder="80" value="${s.w||''}"></div>
+      <div><label style="font-size:11px">Reps</label><input type="number" inputmode="numeric" class="s-r" placeholder="10" value="${s.reps||''}"></div>
+      <button class="s-del" title="Retirer" style="background:var(--surface2);color:var(--muted);border:none;border-radius:8px;width:38px;height:38px;font-size:16px;cursor:pointer">✕</button>
+    </div>`).join('');
+  document.querySelectorAll('#series-list .s-del').forEach(b=>b.onclick=()=>{
+    const r=gatherSeries(); r.splice(+b.closest('.series-row').dataset.i,1); renderSeriesRows(r.length?r:[{}]);
+  });
+  document.querySelectorAll('#series-list input').forEach(inp=>inp.addEventListener('input',updateSeriesAvg));
+  updateSeriesAvg();
+}
 $('add-log').onclick=()=>{
-  $('in-weight').value=''; $('in-reps').value=''; $('in-sets').value='1';
+  renderSeriesRows([{},{},{},{}]);   // 4 séries par défaut
   $('in-date').value=todayISO(); pendingPhoto=null;
   $('photo-prev').style.display='none'; $('photo-label').textContent='Ajouter une photo';
   openSheet('sheet-log');
 };
+$('add-series').onclick=()=>{ const r=gatherSeries(); r.push({}); renderSeriesRows(r); };
 $('photo-pick').onclick=()=>$('in-photo').click();
 $('in-photo').onchange=e=>{ const f=e.target.files[0]; if(!f)return; compress(f,d=>{ pendingPhoto=d; $('photo-prev').src=d; $('photo-prev').style.display='block'; $('photo-label').textContent='Photo ajoutée ✓'; }); };
 $('save-log').onclick=()=>{
-  const w=parseFloat($('in-weight').value)||0, reps=parseInt($('in-reps').value)||0;
-  if(!w&&!reps){ alert('Indique au moins un poids ou des répétitions'); return; }
+  const rows=gatherSeries();
+  const a=seriesAvg(rows);
+  if(!a){ alert('Indique au moins une série (poids ou répétitions)'); return; }
+  const series=rows.filter(s=>s.w||s.reps);
   const e=exoById(cur.gid,cur.eid);
-  e.logs.push({id:nowTs(),date:$('in-date').value||todayISO(),weight:w,reps,sets:parseInt($('in-sets').value)||1,photo:pendingPhoto});
-  if(pendingPhoto) DB.photos.push({id:nowTs(),date:$('in-date').value||todayISO(),img:pendingPhoto,note:e.name+' · '+w+'kg'});
+  e.logs.push({id:nowTs(),date:$('in-date').value||todayISO(),weight:a.w,reps:a.reps,sets:a.n,series,photo:pendingPhoto});
+  if(pendingPhoto) DB.photos.push({id:nowTs(),date:$('in-date').value||todayISO(),img:pendingPhoto,note:e.name+' · '+a.w+'kg'});
   save(); closeSheets(); openExo(cur.gid,cur.eid);
 };
 
@@ -1133,7 +1169,55 @@ const OFF='https://world.openfoodfacts.org';
 let nutScanner=null, pendingFood=null;
 function nutNum(x){ const v=parseFloat(x); return isFinite(v)?v:0; }
 function todayFoods(){ const d=DB.nutrition.days; return d[todayISO()]=d[todayISO()]||[]; }
-function foodTotals(list){ return list.reduce((t,f)=>({kcal:t.kcal+f.kcal,prot:t.prot+f.prot,carb:t.carb+f.carb,fat:t.fat+f.fat}),{kcal:0,prot:0,carb:0,fat:0}); }
+function foodTotals(list){
+  const t={kcal:0,prot:0,carb:0,fat:0,micros:{}};
+  list.forEach(f=>{
+    t.kcal+=f.kcal||0; t.prot+=f.prot||0; t.carb+=f.carb||0; t.fat+=f.fat||0;
+    if(f.micros) Object.keys(f.micros).forEach(k=>t.micros[k]=(t.micros[k]||0)+f.micros[k]);
+  });
+  return t;
+}
+
+// ===== Micronutriments : besoins = Références Nutritionnelles Journalières UE (adulte) =====
+// Open Food Facts renvoie les valeurs _100g en GRAMMES → on convertit vers mg / µg.
+const U={mg:1000,'µg':1e6,g:1};
+const MICROS=[
+  {id:'vitA',off:'vitamin-a',label:'Vit. A',unit:'µg',rda:800,grp:'Vitamines'},
+  {id:'vitC',off:'vitamin-c',label:'Vit. C',unit:'mg',rda:80,grp:'Vitamines'},
+  {id:'vitD',off:'vitamin-d',label:'Vit. D',unit:'µg',rda:15,grp:'Vitamines'},
+  {id:'vitE',off:'vitamin-e',label:'Vit. E',unit:'mg',rda:12,grp:'Vitamines'},
+  {id:'vitK',off:'vitamin-k',label:'Vit. K',unit:'µg',rda:75,grp:'Vitamines'},
+  {id:'b1',off:'vitamin-b1',label:'Vit. B1',unit:'mg',rda:1.1,grp:'Vitamines'},
+  {id:'b2',off:'vitamin-b2',label:'Vit. B2',unit:'mg',rda:1.4,grp:'Vitamines'},
+  {id:'b3',off:'vitamin-pp',label:'Vit. B3 (PP)',unit:'mg',rda:16,grp:'Vitamines'},
+  {id:'b6',off:'vitamin-b6',label:'Vit. B6',unit:'mg',rda:1.4,grp:'Vitamines'},
+  {id:'b9',off:'vitamin-b9',label:'Vit. B9 (folates)',unit:'µg',rda:200,grp:'Vitamines'},
+  {id:'b12',off:'vitamin-b12',label:'Vit. B12',unit:'µg',rda:2.5,grp:'Vitamines'},
+  {id:'calcium',off:'calcium',label:'Calcium',unit:'mg',rda:800,grp:'Minéraux'},
+  {id:'iron',off:'iron',label:'Fer',unit:'mg',rda:14,grp:'Minéraux'},
+  {id:'magnesium',off:'magnesium',label:'Magnésium',unit:'mg',rda:375,grp:'Minéraux'},
+  {id:'zinc',off:'zinc',label:'Zinc',unit:'mg',rda:10,grp:'Minéraux'},
+  {id:'potassium',off:'potassium',label:'Potassium',unit:'mg',rda:2000,grp:'Minéraux'},
+  {id:'phosphorus',off:'phosphorus',label:'Phosphore',unit:'mg',rda:700,grp:'Minéraux'},
+  {id:'iodine',off:'iodine',label:'Iode',unit:'µg',rda:150,grp:'Minéraux'},
+  {id:'selenium',off:'selenium',label:'Sélénium',unit:'µg',rda:55,grp:'Minéraux'},
+  {id:'fiber',off:'fiber',label:'Fibres',unit:'g',rda:30,grp:'Minéraux'}
+];
+function microFmt(v){ if(v>=100)return Math.round(v); if(v>=10)return +v.toFixed(1); return +v.toFixed(2); }
+function productMicros(n){
+  const m={};
+  MICROS.forEach(mi=>{ let g=n[mi.off+'_100g']; if(g===undefined||g===null||g==='')return;
+    g=parseFloat(g); if(!isFinite(g)||g<=0)return; m[mi.id]=g*U[mi.unit]; });
+  return m;
+}
+// Ajoute un aliment/complément directement au journal (1 clic), avec sa portion habituelle.
+function quickAdd(r){
+  const qty=r.serving||100, f=qty/100, p=r.per100||{};
+  const micros={}; if(p.micros) Object.keys(p.micros).forEach(k=>micros[k]=p.micros[k]*f);
+  todayFoods().push({id:nowTs(),name:r.name,brand:r.brand||'',qty,
+    kcal:(p.kcal||0)*f,prot:(p.prot||0)*f,carb:(p.carb||0)*f,fat:(p.fat||0)*f,per100:p,micros});
+  save();
+}
 
 function renderNutrition(){
   $('nut-date').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
@@ -1156,6 +1240,29 @@ function renderNutrition(){
     ${bar(t.fat,fatG,'#d4537e','Lipides','g')}
   </div>`;
 
+  // ----- Vitamines & minéraux (repliable) -----
+  const mt=t.micros||{}, nMic=Object.keys(mt).length;
+  const microBar=(m)=>{ const val=mt[m.id]||0, pct=Math.min(100,m.rda?val/m.rda*100:0), col=m.grp==='Vitamines'?'#a78bfa':'#38bdf8';
+    return `<div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span>${m.label}</span><span><b>${val?microFmt(val):0}</b> / ${m.rda} ${m.unit}</span></div>
+      <div style="height:6px;border-radius:3px;background:var(--surface2);overflow:hidden"><div style="width:${pct}%;height:100%;background:${col}"></div></div></div>`; };
+  $('nut-micros').innerHTML=`<details class="card" style="margin-top:12px"${nMic?' open':''}>
+    <summary style="cursor:pointer;font-weight:600;font-size:14px;list-style:none;display:flex;justify-content:space-between;align-items:center">
+      <span>💊 Vitamines &amp; minéraux</span><span style="font-size:12px;color:var(--muted)">${nMic?nMic+' suivis':'aucune donnée'} ▾</span></summary>
+    <div style="margin-top:12px">
+      ${['Vitamines','Minéraux'].map(g=>`<div class="section-title" style="margin:4px 0 6px">${g}</div>`+MICROS.filter(m=>m.grp===g).map(microBar).join('')).join('')}
+      <p style="font-size:11px;color:var(--muted);margin-top:4px">Besoins = repères journaliers adulte (UE). Les valeurs viennent des produits scannés/saisis.</p>
+    </div></details>`;
+
+  // ----- Mes quotidiens (ajout 1 clic) -----
+  $('nut-daily').innerHTML=N.daily.length?`<div class="section-title" style="margin-top:12px">Mes quotidiens <a id="daily-addall">+ Tout ajouter</a></div>
+    <div class="pill-row">`+N.daily.map((r,i)=>`<span class="pill" data-d="${i}">${r.name}<span data-ddel="${i}" style="color:var(--muted);margin-left:6px">✕</span></span>`).join('')+`</div>`:'';
+  document.querySelectorAll('#nut-daily .pill').forEach(el=>el.onclick=e=>{
+    if(e.target.dataset.ddel!==undefined){ N.daily.splice(+e.target.dataset.ddel,1); save(); renderNutrition(); return; }
+    quickAdd(N.daily[+el.dataset.d]); renderNutrition();
+  });
+  if($('daily-addall')) $('daily-addall').onclick=()=>{ N.daily.forEach(quickAdd); renderNutrition(); };
+
   $('nut-recent').innerHTML=N.recent.length?`<div class="section-title" style="margin-top:4px">Récents (1 clic)</div><div class="pill-row">`+
     N.recent.slice(0,8).map((r,i)=>`<span class="pill" data-r="${i}">${r.name}</span>`).join('')+`</div>`:'';
   document.querySelectorAll('#nut-recent .pill').forEach(el=>el.onclick=()=>openAddFood({...N.recent[+el.dataset.r]}));
@@ -1163,9 +1270,16 @@ function renderNutrition(){
   $('nut-list').innerHTML=list.length?list.map(f=>`
     <div class="log-item">
       <div class="v" style="flex:1;font-weight:400"><div style="font-weight:500">${f.name}</div><div style="font-size:12px;color:var(--muted)">${f.qty} g · ${Math.round(f.kcal)} kcal · P${Math.round(f.prot)} G${Math.round(f.carb)} L${Math.round(f.fat)}</div></div>
+      <span class="pin" data-pin="${f.id}" title="Ajouter à mes quotidiens" style="cursor:pointer;font-size:16px;margin-right:10px;opacity:.6">📌</span>
       <span class="delete" data-i="${f.id}">Suppr</span></div>`).join('')
     :`<div class="empty"><svg viewBox="0 0 24 24"><path d="M6 3v18M6 8h4M18 3c-1 3-1 6 0 9v9"/></svg><div>Rien pour aujourd'hui.<br>Scanne un produit ou ajoute un aliment 🍎</div></div>`;
   document.querySelectorAll('#nut-list .delete').forEach(el=>el.onclick=()=>{ DB.nutrition.days[todayISO()]=todayFoods().filter(f=>f.id!=el.dataset.i); save(); renderNutrition(); });
+  document.querySelectorAll('#nut-list .pin').forEach(el=>el.onclick=()=>{
+    const f=todayFoods().find(x=>x.id==el.dataset.pin); if(!f)return;
+    if(!f.per100){ alert('Infos nutritionnelles manquantes pour l\'épingler.'); return; }
+    if(DB.nutrition.daily.some(d=>d.name===f.name)){ alert('« '+f.name+' » est déjà dans tes quotidiens.'); return; }
+    DB.nutrition.daily.push({name:f.name,brand:f.brand||'',per100:f.per100,serving:f.qty}); save(); renderNutrition();
+  });
 
   $('nut-meals').innerHTML=N.meals.length?`<div class="section-title">Repas types (1 clic)</div>`+N.meals.map((m,i)=>`
     <div class="ex-row" data-meal="${i}"><div class="ex-thumb"><svg viewBox="0 0 24 24"><path d="M4 3v18M4 8h4M18 3c-1 3-1 6 0 9v9"/></svg></div>
@@ -1179,7 +1293,7 @@ function productToFood(p){
   const n=p.nutriments||{};
   return { name:(p.product_name_fr||p.product_name||'Produit').slice(0,60),
     brand:(p.brands||'').split(',')[0].trim(),
-    per100:{kcal:Math.round(nutNum(n['energy-kcal_100g'])), prot:+nutNum(n.proteins_100g).toFixed(1), carb:+nutNum(n.carbohydrates_100g).toFixed(1), fat:+nutNum(n.fat_100g).toFixed(1)},
+    per100:{kcal:Math.round(nutNum(n['energy-kcal_100g'])), prot:+nutNum(n.proteins_100g).toFixed(1), carb:+nutNum(n.carbohydrates_100g).toFixed(1), fat:+nutNum(n.fat_100g).toFixed(1), micros:productMicros(n)},
     serving:Math.round(nutNum(p.serving_quantity))||100 };
 }
 
@@ -1191,8 +1305,21 @@ function openAddFood(food){
   $('af-brand').textContent=pendingFood.brand||'';
   $('af-kcal').value=p.kcal||''; $('af-prot').value=p.prot||''; $('af-carb').value=p.carb||''; $('af-fat').value=p.fat||'';
   $('af-qty').value=pendingFood.serving||100;
+  const micros=p.micros||{};
+  MICROS.forEach(m=>{ const el=$('afm-'+m.id); if(el) el.value=micros[m.id]?microFmt(micros[m.id]):''; });
+  const w=$('af-micros-wrap'); if(w) w.open=Object.keys(micros).length>0;
   updateAfTotal(); openSheet('sheet-addfood');
 }
+function afMicros100(){ const o={}; MICROS.forEach(m=>{ const el=$('afm-'+m.id); const v=el?nutNum(el.value):0; if(v>0)o[m.id]=v; }); return o; }
+function buildMicroInputs(){
+  const grps=[...new Set(MICROS.map(m=>m.grp))];
+  const box=$('af-micros'); if(!box) return;
+  box.innerHTML=grps.map(g=>`<div class="section-title" style="margin:6px 2px 4px">${g}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">`+
+      MICROS.filter(m=>m.grp===g).map(m=>`<div><label style="font-size:11px">${m.label} (${m.unit})</label>
+        <input type="number" inputmode="decimal" id="afm-${m.id}" placeholder="0"></div>`).join('')+`</div>`).join('');
+}
+buildMicroInputs();
 function afVals(){ const qty=nutNum($('af-qty').value)||0, f=qty/100;
   return { kcal:nutNum($('af-kcal').value)*f, prot:nutNum($('af-prot').value)*f, carb:nutNum($('af-carb').value)*f, fat:nutNum($('af-fat').value)*f, qty }; }
 function updateAfTotal(){ const v=afVals(); $('af-total').innerHTML=`<div style="font-size:22px;font-weight:700">${Math.round(v.kcal)} kcal</div><div style="font-size:13px;color:var(--muted)">Protéines ${v.prot.toFixed(1)} g · Glucides ${v.carb.toFixed(1)} g · Lipides ${v.fat.toFixed(1)} g</div>`; }
@@ -1200,9 +1327,11 @@ function updateAfTotal(){ const v=afVals(); $('af-total').innerHTML=`<div style=
 $('af-save').onclick=()=>{
   const v=afVals(); if(!v.qty){ alert('Indique une quantité (g)'); return; }
   const name=$('af-name').value.trim()||'Aliment';
-  const per100={kcal:nutNum($('af-kcal').value),prot:nutNum($('af-prot').value),carb:nutNum($('af-carb').value),fat:nutNum($('af-fat').value)};
+  const micros100=afMicros100();
+  const per100={kcal:nutNum($('af-kcal').value),prot:nutNum($('af-prot').value),carb:nutNum($('af-carb').value),fat:nutNum($('af-fat').value),micros:micros100};
+  const fac=v.qty/100, micros={}; Object.keys(micros100).forEach(k=>micros[k]=micros100[k]*fac);
   const brand=pendingFood?pendingFood.brand:'';
-  todayFoods().push({id:nowTs(),name,brand,qty:v.qty,kcal:v.kcal,prot:v.prot,carb:v.carb,fat:v.fat,per100});
+  todayFoods().push({id:nowTs(),name,brand,qty:v.qty,kcal:v.kcal,prot:v.prot,carb:v.carb,fat:v.fat,per100,micros});
   DB.nutrition.recent=[{name,brand,per100,serving:v.qty},...DB.nutrition.recent.filter(r=>r.name!==name)].slice(0,12);
   save(); closeSheets(); renderNutrition();
 };
@@ -1256,7 +1385,7 @@ $('nut-manual').onclick=()=>openAddFood(null);
 $('nut-goals-btn').onclick=()=>{ $('g-kcal').value=DB.nutrition.goalKcal; $('g-prot').value=DB.nutrition.goalProt; openSheet('sheet-goals'); };
 $('g-save').onclick=()=>{ DB.nutrition.goalKcal=parseInt($('g-kcal').value)||2200; DB.nutrition.goalProt=parseInt($('g-prot').value)||180; save(); closeSheets(); renderNutrition(); };
 $('nut-savemeal').onclick=()=>{ if(!todayFoods().length){ alert('Ajoute d\'abord des aliments aujourd\'hui.'); return; } $('meal-name').value=''; openSheet('sheet-meal'); };
-$('meal-save').onclick=()=>{ const name=$('meal-name').value.trim(); if(!name)return; DB.nutrition.meals.push({name,items:todayFoods().map(f=>({name:f.name,brand:f.brand,qty:f.qty,kcal:f.kcal,prot:f.prot,carb:f.carb,fat:f.fat,per100:f.per100}))}); save(); closeSheets(); renderNutrition(); };
+$('meal-save').onclick=()=>{ const name=$('meal-name').value.trim(); if(!name)return; DB.nutrition.meals.push({name,items:todayFoods().map(f=>({name:f.name,brand:f.brand,qty:f.qty,kcal:f.kcal,prot:f.prot,carb:f.carb,fat:f.fat,per100:f.per100,micros:f.micros}))}); save(); closeSheets(); renderNutrition(); };
 
 /* ============ NAVIGATION ============ */
 function show(view){

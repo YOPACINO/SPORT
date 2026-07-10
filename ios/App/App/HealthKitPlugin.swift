@@ -23,8 +23,11 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
     private func readTypes() -> Set<HKObjectType> {
         var s = Set<HKObjectType>()
         if let t = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(t) }
-        [.stepCount, .activeEnergyBurned, .heartRate, .heartRateVariabilitySDNN,
-         .restingHeartRate, .bodyMass, .vo2Max, .distanceWalkingRunning].forEach {
+        let ids: [HKQuantityTypeIdentifier] = [
+            .stepCount, .activeEnergyBurned, .heartRate, .heartRateVariabilitySDNN,
+            .restingHeartRate, .bodyMass, .vo2Max, .distanceWalkingRunning
+        ]
+        ids.forEach {
             if let t = qType($0) { s.insert(t) }
         }
         s.insert(HKObjectType.workoutType())

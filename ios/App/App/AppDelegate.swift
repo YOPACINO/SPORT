@@ -7,9 +7,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Référence la classe dans le code : empêche le compilateur de la supprimer
-        // (le storyboard seul ne suffit pas → sinon "Unknown class MainViewController").
-        _ = MainViewController.self
+        // On instancie MainViewController DIRECTEMENT en code (type Swift compilé) au lieu
+        // de passer par le storyboard, qui n'arrivait pas à retrouver la classe par son nom
+        // ("Unknown class MainViewController" + écran noir). Ici, aucune recherche par nom.
+        window = UIWindow(frame: UIScreen.main.bounds)
+        window?.rootViewController = MainViewController()
+        window?.makeKeyAndVisible()
         return true
     }
 

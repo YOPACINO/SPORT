@@ -638,7 +638,10 @@ const STRAVA_TYPES={Run:'Course',TrailRun:'Trail',Ride:'Vélo',VirtualRide:'Vél
 const stravaType=t=>STRAVA_TYPES[t]||t;
 
 async function stravaApi(payload){
-  const r=await fetch(STRAVA_FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  // En app native (capacitor://localhost), les fonctions Netlify ne sont pas locales :
+  // il faut l'URL absolue du site. En web, le chemin relatif suffit.
+  const url=(IS_NATIVE?SITE_URL:'')+STRAVA_FN;
+  const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   let data; try{ data=await r.json(); }catch(e){ data={error:'Réponse serveur invalide'}; }
   if(!r.ok && !data.error) data.error='Erreur '+r.status;
   return data;
@@ -736,8 +739,11 @@ function renderStrava(){
 /* ============ SANTÉ (import Apple Santé) ============ */
 let healthCharts=[];
 $('import-health').onclick=()=>$('health-file').click();
-$('sync-health-live').onclick=syncHealthLive;
-if(IS_NATIVE) $('sync-health-live').classList.remove('hide');
+$('sync-health-live').onclick=()=>syncHealthLive(false);
+if(IS_NATIVE){
+  $('sync-health-live').classList.remove('hide');
+  $('import-health').classList.add('hide');   // app native : synchro en direct, plus d'import de fichier
+}
 $('health-file').onchange=async e=>{
   const f=e.target.files[0]; if(!f) return;
   $('health-status').textContent='Lecture du fichier… (ça peut prendre 1-2 min)';
@@ -917,26 +923,41 @@ function healthKitToDB(d){
     workouts: (d.workouts||[]).map(w=>({act:hkWorkoutName(w.type),date:iso10(w.start),dur:Math.round((w.duration||0)/60),dist:(w.distance||0)/1000,kcal:Math.round(w.calories||0)})).sort((a,b)=>a.date<b.date?1:-1).slice(0,40)
   };
 }
-async function syncHealthLive(){
+let healthSyncing=false;
+async function syncHealthLive(silent){
   const HK=(window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.HealthKit);
-  if(!HK){ alert('Module Santé disponible uniquement dans l\'app iOS installée.'); return; }
-  $('health-status').textContent='Autorisation Apple Santé…';
+  if(!HK){ if(!silent) alert('Module Santé disponible uniquement dans l\'app iOS installée.'); return; }
+  if(healthSyncing) return; healthSyncing=true;
+  const st=$('health-status'); const setSt=t=>{ if(!silent) st.textContent=t; };
+  setSt('Autorisation Apple Santé…');
   try{
-    const av=await HK.isAvailable(); if(!av.available){ $('health-status').textContent='Apple Santé indisponible sur cet appareil.'; return; }
+    const av=await HK.isAvailable(); if(!av.available){ setSt('Apple Santé indisponible sur cet appareil.'); return; }
     await HK.requestAuthorization();
-    $('health-status').textContent='Lecture des données… (quelques secondes)';
+    setSt('Lecture des données… (quelques secondes)');
     const data=await HK.queryAll({days:185});
     DB.health=healthKitToDB(data); save();
-    $('health-status').textContent='✅ Synchronisé (Apple Santé, en direct)';
     renderHealth();
-  }catch(e){ $('health-status').textContent='❌ '+(e.message||e); }
+  }catch(e){ setSt('❌ '+(e.message||e)); }
+  finally{ healthSyncing=false; }
 }
 
 function renderHealth(){
   healthCharts.forEach(c=>c.destroy()); healthCharts=[];
   const h=DB.health;
+  const live=!!(h && h.source==='live');
+  // App native : une fois la synchro en direct faite, on masque le bandeau d'infos et le gros bouton.
+  if(IS_NATIVE){
+    $('health-intro').classList.toggle('hide', live);
+    $('sync-health-live').classList.toggle('hide', live);
+  }
   if(!h){ $('health-content').innerHTML=''; return; }
-  $('health-status').textContent='✅ Dernière mise à jour : '+fmtDate(h.imported);
+  if(live){
+    $('health-status').innerHTML='🔄 Mis à jour automatiquement · '+fmtDate(h.imported)+
+      ' · <a href="#" id="health-refresh" style="color:var(--accent);text-decoration:none">Actualiser</a>';
+    const rf=$('health-refresh'); if(rf) rf.onclick=e=>{ e.preventDefault(); syncHealthLive(false); };
+  } else {
+    $('health-status').textContent='✅ Dernière mise à jour : '+fmtDate(h.imported);
+  }
   const avg=(a,k)=>a.length?a.reduce((s,x)=>s+x[k],0)/a.length:0;
   const avgSleep=h.sleep.length?avg(h.sleep,'hours').toFixed(1):'—';
   const avgSteps=h.steps.length?Math.round(avg(h.steps,'count')).toLocaleString('fr-FR'):'—';
@@ -1221,7 +1242,7 @@ async function doSearch(){
   const term=$('sf-input').value.trim(); if(!term)return;
   $('sf-results').innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Recherche…</div>';
   try{
-    const r=await fetch('/.netlify/functions/off?q='+encodeURIComponent(term));
+    const r=await fetch((IS_NATIVE?SITE_URL:'')+'/.netlify/functions/off?q='+encodeURIComponent(term));
     const d=await r.json();
     sfFoods=(d.products||[]).map(productToFood).filter(f=>f.per100.kcal>0);
     if(!sfFoods.length){ $('sf-results').innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Aucun résultat. Essaie l\'ajout manuel.</div>'; return; }
@@ -1249,7 +1270,10 @@ function navView(nav){
   else if(nav==='cardio'){ renderCardio(); show('view-cardio'); }
   else if(nav==='photos'){ renderPhotos(); show('view-photos'); }
   else if(nav==='nutrition'){ renderNutrition(); show('view-nutrition'); }
-  else if(nav==='sante'){ show('view-sante'); renderHealth(); }
+  else if(nav==='sante'){ show('view-sante'); renderHealth();
+    // Déjà synchronisé en direct → on rafraîchit automatiquement en silence à chaque ouverture.
+    if(IS_NATIVE && DB.health && DB.health.source==='live') syncHealthLive(true);
+  }
   else if(nav==='wellness'){ renderWellness(); show('view-wellness'); }
 }
 document.querySelectorAll('.nav a').forEach(a=>a.onclick=()=>navView(a.dataset.nav));
@@ -1263,6 +1287,8 @@ $('back-group').onclick=()=>openGroup(cur.gid);
   $('avatar').textContent=(DB.name[0]||'M').toUpperCase();
   renderHome();
   scheduleAll();
+  // Auto-sync Apple Santé au démarrage si déjà connecté en direct (mise à jour auto, sans rien demander).
+  if(IS_NATIVE && DB.health && DB.health.source==='live') syncHealthLive(true);
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
   // Retour de connexion Strava (web) ?
   if(location.search.indexOf('code=')>-1 || location.search.indexOf('error=')>-1){

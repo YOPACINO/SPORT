@@ -2,7 +2,7 @@
    Le Client Secret n'est JAMAIS exposé au navigateur : il reste dans les variables
    d'environnement Netlify (WITHINGS_CLIENT_SECRET). */
 
-const CLIENT_ID = 'REMPLACER_PAR_CLIENT_ID';
+const CLIENT_ID = '6de22a52f28130a0e0cb11be1f1b007cd7cec4573b1b96d4fa9704b9fcad379a';
 const REDIRECT_URI = 'https://graceful-capybara-5c8190.netlify.app/withings-callback.html';
 
 exports.handler = async (event) => {

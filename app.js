@@ -982,7 +982,7 @@ async function syncHealthLive(silent){
 }
 
 /* ---- Withings (balance connectée en direct : poids, gras, muscle, os, eau) ---- */
-const WITHINGS_CLIENT_ID='REMPLACER_PAR_CLIENT_ID';
+const WITHINGS_CLIENT_ID='6de22a52f28130a0e0cb11be1f1b007cd7cec4573b1b96d4fa9704b9fcad379a';
 const WITHINGS_FN=(IS_NATIVE?SITE_URL:'')+'/.netlify/functions/withings';
 const WITHINGS_REDIRECT=SITE_URL+'/withings-callback.html';
 function withingsAuthUrl(){

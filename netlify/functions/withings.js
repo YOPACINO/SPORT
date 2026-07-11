@@ -47,7 +47,7 @@ exports.handler = async (event) => {
     if (body.action === 'measures') {
       const params = new URLSearchParams({
         action: 'getmeas',
-        meastypes: '1,5,6,8,76,77,88',   // poids, masse maigre, %gras, masse grasse, muscle, eau, os
+        meastypes: '1,5,6,8,11,76,77,88',   // poids, masse maigre, %gras, masse grasse kg, FC, muscle, eau, os
         category: '1'
       });
       if (body.startdate) params.set('startdate', String(body.startdate));

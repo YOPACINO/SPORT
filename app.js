@@ -165,6 +165,7 @@ function migrate(d){
   d.health = d.health||null;
   d.strava = d.strava||null;
   d.withings = d.withings||null;
+  d.height = d.height||null;   // taille en cm (pour l'IMC)
   d.nutrition = d.nutrition||{goalKcal:2200, goalProt:180, days:{}, recent:[], meals:[]};
   d.nutrition.daily = d.nutrition.daily||[];   // compléments / aliments quotidiens (ajout 1 clic)
   d.coach = d.coach||{vid:{}, note:{}, photos:{}};
@@ -1020,7 +1021,7 @@ async function withingsEnsureToken(){
 }
 function withingsParse(resp){
   const grps=((resp.body||{}).measuregrps)||[];
-  const map={1:'weight',5:'lean',6:'fatPct',8:'fatMass',76:'muscle',77:'water',88:'bone'};
+  const map={1:'weight',5:'lean',6:'fatPct',8:'fatMass',11:'heart',76:'muscle',77:'water',88:'bone'};
   const latest={};
   grps.slice().sort((a,b)=>a.date-b.date).forEach(g=>{ (g.measures||[]).forEach(m=>{ const k=map[m.type]; if(k) latest[k]={v:m.value*Math.pow(10,m.unit),date:g.date}; }); });
   const keys=Object.keys(latest); if(!keys.length) return null;
@@ -1062,10 +1063,13 @@ function renderBodyComp(){
   if(W){
     date=W.date; src=' · Withings';
     if(W.weight) items.push(['Poids',W.weight+' kg','#1d9e75']);
+    if(DB.height&&W.weight) items.push(['IMC',(W.weight/Math.pow(DB.height/100,2)).toFixed(1),'#a78bfa']);
     if(W.fatPct) items.push(['Masse grasse',W.fatPct+' %','#d85a30']);
+    if(W.fatMass) items.push(['dont graisse',W.fatMass+' kg','#f59e0b']);
     if(W.muscle) items.push(['Muscle',W.muscle+' kg','#3b82f6']);
     if(W.bone) items.push(['Masse osseuse',W.bone+' kg','#94a3b8']);
     if(W.water&&W.weight) items.push(['Eau',(W.water/W.weight*100).toFixed(1)+' %','#38bdf8']);
+    if(W.heart) items.push(['Fréq. cardiaque',W.heart+' bpm','#d4537e']);
   } else if(h){
     const last=a=>(a&&a.length)?a[a.length-1]:null;
     const bw=last(h.weight),bf=last(h.fat),bl=last(h.lean),bb=last(h.bmi);
@@ -1486,8 +1490,8 @@ async function doSearch(){
 
 /* --- manuel / objectifs / repas --- */
 $('nut-manual').onclick=()=>openAddFood(null);
-$('nut-goals-btn').onclick=()=>{ $('g-kcal').value=DB.nutrition.goalKcal; $('g-prot').value=DB.nutrition.goalProt; openSheet('sheet-goals'); };
-$('g-save').onclick=()=>{ DB.nutrition.goalKcal=parseInt($('g-kcal').value)||2200; DB.nutrition.goalProt=parseInt($('g-prot').value)||180; save(); closeSheets(); renderNutrition(); };
+$('nut-goals-btn').onclick=()=>{ $('g-kcal').value=DB.nutrition.goalKcal; $('g-prot').value=DB.nutrition.goalProt; $('g-height').value=DB.height||''; openSheet('sheet-goals'); };
+$('g-save').onclick=()=>{ DB.nutrition.goalKcal=parseInt($('g-kcal').value)||2200; DB.nutrition.goalProt=parseInt($('g-prot').value)||180; DB.height=parseInt($('g-height').value)||null; save(); closeSheets(); renderNutrition(); };
 $('nut-savemeal').onclick=()=>{ if(!todayFoods().length){ alert('Ajoute d\'abord des aliments aujourd\'hui.'); return; } $('meal-name').value=''; openSheet('sheet-meal'); };
 $('meal-save').onclick=()=>{ const name=$('meal-name').value.trim(); if(!name)return; DB.nutrition.meals.push({name,items:todayFoods().map(f=>({name:f.name,brand:f.brand,qty:f.qty,kcal:f.kcal,prot:f.prot,carb:f.carb,fat:f.fat,per100:f.per100,micros:f.micros}))}); save(); closeSheets(); renderNutrition(); };
 

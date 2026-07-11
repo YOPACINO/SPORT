@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MonSport — retour Withings</title>
+<style>body{font-family:-apple-system,sans-serif;background:#0f1115;color:#f2f4f8;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center}</style>
+</head>
+<body>
+<div>
+  <p>Connexion Withings réussie ✅</p>
+  <p style="color:#9aa3b2;font-size:14px">Retour à MonSport…</p>
+  <p><a id="back" href="#" style="color:#00a3ad">Ouvrir MonSport</a></p>
+</div>
+<script>
+  var p = new URLSearchParams(location.search);
+  var code = p.get('code') || '';
+  var err = p.get('error') || '';
+  var deep = 'monsport://withings?code=' + encodeURIComponent(code) + (err ? '&error=' + encodeURIComponent(err) : '');
+  document.getElementById('back').href = deep;
+  // Renvoie automatiquement vers l'app native
+  location.href = deep;
+</script>
+</body>
+</html>

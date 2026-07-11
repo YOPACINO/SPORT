@@ -164,6 +164,7 @@ function migrate(d){
   d.reminders = d.reminders||{stretch:{on:false,time:'18:00'}, beauty_m:{on:false,time:'08:00'}, beauty_s:{on:false,time:'21:00'}};
   d.health = d.health||null;
   d.strava = d.strava||null;
+  d.withings = d.withings||null;
   d.nutrition = d.nutrition||{goalKcal:2200, goalProt:180, days:{}, recent:[], meals:[]};
   d.nutrition.daily = d.nutrition.daily||[];   // compléments / aliments quotidiens (ajout 1 clic)
   d.coach = d.coach||{vid:{}, note:{}, photos:{}};
@@ -980,6 +981,106 @@ async function syncHealthLive(silent){
   finally{ healthSyncing=false; }
 }
 
+/* ---- Withings (balance connectée en direct : poids, gras, muscle, os, eau) ---- */
+const WITHINGS_CLIENT_ID='REMPLACER_PAR_CLIENT_ID';
+const WITHINGS_FN=(IS_NATIVE?SITE_URL:'')+'/.netlify/functions/withings';
+const WITHINGS_REDIRECT=SITE_URL+'/withings-callback.html';
+function withingsAuthUrl(){
+  return 'https://account.withings.com/oauth2_user/authorize2?response_type=code'+
+    '&client_id='+WITHINGS_CLIENT_ID+'&scope=user.metrics'+
+    '&redirect_uri='+encodeURIComponent(WITHINGS_REDIRECT)+'&state=monsport';
+}
+function withingsConnect(){
+  if(IS_NATIVE && CAP.Plugins && CAP.Plugins.Browser){ CAP.Plugins.Browser.open({ url: withingsAuthUrl() }); }
+  else { location.href=withingsAuthUrl(); }
+}
+async function withingsApi(payload){
+  const r=await fetch(WITHINGS_FN,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  let data; try{ data=await r.json(); }catch(e){ data={status:-1,error:'Réponse serveur invalide'}; }
+  return data;
+}
+async function exchangeWithingsCode(code){
+  const data=await withingsApi({action:'exchange',code,redirect_uri:WITHINGS_REDIRECT});
+  const b=data.body||{};
+  if(data.status===0 && b.access_token){
+    DB.withings={access_token:b.access_token,refresh_token:b.refresh_token,expires_at:Math.floor(Date.now()/1000)+(b.expires_in||10800),userid:b.userid,body:null};
+    save(); await withingsSync();
+  } else { alert('Connexion Withings échouée : '+(data.error||('code '+data.status))); }
+}
+async function withingsEnsureToken(){
+  if(!DB.withings) return null;
+  const now=Math.floor(Date.now()/1000);
+  if(DB.withings.expires_at && DB.withings.expires_at-60<now){
+    const data=await withingsApi({action:'refresh',refresh_token:DB.withings.refresh_token});
+    const b=data.body||{};
+    if(data.status===0 && b.access_token){ DB.withings.access_token=b.access_token; DB.withings.refresh_token=b.refresh_token; DB.withings.expires_at=now+(b.expires_in||10800); save(); }
+    else return null;
+  }
+  return DB.withings.access_token;
+}
+function withingsParse(resp){
+  const grps=((resp.body||{}).measuregrps)||[];
+  const map={1:'weight',5:'lean',6:'fatPct',8:'fatMass',76:'muscle',77:'water',88:'bone'};
+  const latest={};
+  grps.slice().sort((a,b)=>a.date-b.date).forEach(g=>{ (g.measures||[]).forEach(m=>{ const k=map[m.type]; if(k) latest[k]={v:m.value*Math.pow(10,m.unit),date:g.date}; }); });
+  const keys=Object.keys(latest); if(!keys.length) return null;
+  const date=Math.max.apply(null,keys.map(k=>latest[k].date));
+  const out={date:new Date(date*1000).toISOString().slice(0,10)};
+  keys.forEach(k=>out[k]=+latest[k].v.toFixed(1));
+  return out;
+}
+let withingsSyncing=false;
+async function withingsSync(){
+  if(withingsSyncing) return; withingsSyncing=true;
+  try{
+    const token=await withingsEnsureToken();
+    if(!token){ renderWithings(); return; }
+    const data=await withingsApi({action:'measures',access_token:token});
+    const body=withingsParse(data);
+    if(body){ DB.withings.body=body; save(); }
+    renderHealth();
+  } finally { withingsSyncing=false; }
+}
+function withingsDisconnect(){ if(confirm('Déconnecter la balance Withings ?')){ DB.withings=null; save(); renderHealth(); } }
+function renderWithings(){
+  const box=$('withings-box'); if(!box) return;
+  if(!DB.withings){
+    box.innerHTML=`<button class="btn" id="withings-connect" style="background:#00a3ad;margin-bottom:10px"><svg style="width:20px;height:20px;stroke:#fff;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg> Connecter ma balance Withings</button>`;
+    $('withings-connect').onclick=withingsConnect;
+  } else {
+    box.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin:2px 2px 10px;font-size:13px">
+      <span style="color:#00a3ad;font-weight:600">⚖️ Withings connecté</span>
+      <span><a id="withings-sync" style="color:var(--accent);margin-right:14px;cursor:pointer">Synchroniser</a><a id="withings-disc" style="color:var(--muted);cursor:pointer">Déconnecter</a></span></div>`;
+    $('withings-sync').onclick=()=>withingsSync();
+    $('withings-disc').onclick=withingsDisconnect;
+  }
+}
+function renderBodyComp(){
+  const box=$('body-comp'); if(!box) return;
+  const W=(DB.withings&&DB.withings.body)||null, h=DB.health;
+  const items=[]; let date=null, src='';
+  if(W){
+    date=W.date; src=' · Withings';
+    if(W.weight) items.push(['Poids',W.weight+' kg','#1d9e75']);
+    if(W.fatPct) items.push(['Masse grasse',W.fatPct+' %','#d85a30']);
+    if(W.muscle) items.push(['Muscle',W.muscle+' kg','#3b82f6']);
+    if(W.bone) items.push(['Masse osseuse',W.bone+' kg','#94a3b8']);
+    if(W.water&&W.weight) items.push(['Eau',(W.water/W.weight*100).toFixed(1)+' %','#38bdf8']);
+  } else if(h){
+    const last=a=>(a&&a.length)?a[a.length-1]:null;
+    const bw=last(h.weight),bf=last(h.fat),bl=last(h.lean),bb=last(h.bmi);
+    if(bw){ items.push(['Poids',bw.kg+' kg','#1d9e75']); date=bw.date; }
+    if(bf) items.push(['Masse grasse',bf.pct+' %','#d85a30']);
+    if(bl) items.push(['Muscle (masse maigre)',bl.kg+' kg','#3b82f6']);
+    if(bb) items.push(['IMC',bb.v+'','#a78bfa']);
+  }
+  box.innerHTML=items.length?`<div class="card" style="margin-top:14px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">⚖️ Composition corporelle${date?' · '+fmtDate(date):''}${src}</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+      ${items.map(b=>`<div style="background:var(--surface2);border-radius:12px;padding:12px"><div style="font-size:22px;font-weight:700;color:${b[2]}">${b[1]}</div><div style="font-size:12px;color:var(--muted)">${b[0]}</div></div>`).join('')}
+    </div></div>`:'';
+}
+
 function renderHealth(){
   healthCharts.forEach(c=>c.destroy()); healthCharts=[];
   const h=DB.health;
@@ -989,6 +1090,7 @@ function renderHealth(){
     $('health-intro').classList.toggle('hide', live);
     $('sync-health-live').classList.toggle('hide', live);
   }
+  renderWithings(); renderBodyComp();
   if(!h){ $('health-content').innerHTML=''; return; }
   if(live){
     $('health-status').innerHTML='🔄 Mis à jour automatiquement · '+fmtDate(h.imported)+
@@ -1010,19 +1112,6 @@ function renderHealth(){
   if((h.hrv||[]).length) sec.push(['hrv','VFC (HRV)',Math.round(avg(h.hrv,'ms'))+' ms']);
   if(h.vo2) sec.push(['','VO₂ max',h.vo2+'']);
   const chev='<svg style="width:18px;height:18px;stroke:var(--muted);stroke-width:2;fill:none;flex-shrink:0" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
-  // Composition corporelle (balance connectée → Apple Santé) : dernières valeurs
-  const lastOf=a=>(a&&a.length)?a[a.length-1]:null;
-  const bw=lastOf(h.weight), bf=lastOf(h.fat), bl=lastOf(h.lean), bb=lastOf(h.bmi);
-  const bodyItems=[];
-  if(bw) bodyItems.push(['Poids',bw.kg+' kg','#1d9e75']);
-  if(bf) bodyItems.push(['Masse grasse',bf.pct+' %','#d85a30']);
-  if(bl) bodyItems.push(['Muscle (masse maigre)',bl.kg+' kg','#3b82f6']);
-  if(bb) bodyItems.push(['IMC',bb.v+'','#a78bfa']);
-  const bodyCard=bodyItems.length?`<div class="card" style="margin-top:14px">
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">⚖️ Composition corporelle${bw?' · '+fmtDate(bw.date):''}</div>
-    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
-      ${bodyItems.map(b=>`<div style="background:var(--surface2);border-radius:12px;padding:12px"><div style="font-size:22px;font-weight:700;color:${b[2]}">${b[1]}</div><div style="font-size:12px;color:var(--muted)">${b[0]}</div></div>`).join('')}
-    </div></div>`:'';
 
   $('health-content').innerHTML=`
     ${lastNight?`<div class="card tap" data-m="sleep" style="margin-top:14px;cursor:pointer">
@@ -1041,7 +1130,6 @@ function renderHealth(){
       <div class="stat tap" data-m="rest" style="cursor:pointer"><div class="n">${avgRest}</div><div class="l">FC repos</div></div>
     </div>
     ${sec.length?`<div class="stats" style="grid-template-columns:repeat(${Math.min(sec.length,3)},1fr)">`+sec.slice(0,6).map(s=>`<div class="stat${s[0]?' tap':''}" ${s[0]?`data-m="${s[0]}" style="cursor:pointer"`:''}><div class="n" style="font-size:18px">${s[2]}</div><div class="l">${s[1]}</div></div>`).join('')+`</div>`:''}
-    ${bodyCard}
 
     ${h.sleep.length?`<div class="card"><div style="font-size:13px;color:var(--muted);margin-bottom:6px">😴 Durée de sommeil (30 j)</div><div class="chart-wrap"><canvas id="ch-sleep"></canvas></div></div>`:''}
     ${h.steps.length?`<div class="card"><div style="font-size:13px;color:var(--muted);margin-bottom:6px">👟 Pas par jour</div><div class="chart-wrap"><canvas id="ch-steps"></canvas></div></div>`:''}
@@ -1448,6 +1536,11 @@ $('back-group').onclick=()=>openGroup(cur.gid);
         if(CAP.Plugins.Browser) CAP.Plugins.Browser.close().catch(()=>{});
         const m=url.match(/[?&]code=([^&]+)/);
         if(m){ navView('cardio'); await exchangeStravaCode(decodeURIComponent(m[1])); }
+      }
+      if(url.indexOf('withings')>-1){
+        if(CAP.Plugins.Browser) CAP.Plugins.Browser.close().catch(()=>{});
+        const m=url.match(/[?&]code=([^&]+)/);
+        if(m){ navView('sante'); await exchangeWithingsCode(decodeURIComponent(m[1])); }
       }
     });
   }

@@ -954,6 +954,9 @@ function healthKitToDB(d){
     hrv: daily(d.hrv).map(x=>({date:x.date,ms:Math.round(x.v)})),
     rest: daily(d.rest).map(x=>({date:x.date,rest:Math.round(x.v)})),
     weight: daily(d.weight).map(x=>({date:x.date,kg:+x.v.toFixed(1)})),
+    fat: daily(d.fat).map(x=>({date:x.date,pct:+(x.v*100).toFixed(1)})),   // HealthKit % = fraction 0-1
+    lean: daily(d.lean).map(x=>({date:x.date,kg:+x.v.toFixed(1)})),
+    bmi: daily(d.bmi).map(x=>({date:x.date,v:+x.v.toFixed(1)})),
     exo: [],
     vo2: (d.vo2&&d.vo2.length)?Math.round(d.vo2[d.vo2.length-1].value):0,
     workouts: (d.workouts||[]).map(w=>({act:hkWorkoutName(w.type),date:iso10(w.start),dur:Math.round((w.duration||0)/60),dist:(w.distance||0)/1000,kcal:Math.round(w.calories||0)})).sort((a,b)=>a.date<b.date?1:-1).slice(0,40)
@@ -1006,8 +1009,20 @@ function renderHealth(){
   if((h.exo||[]).length) sec.push(['exo','Exercice / jour',Math.round(avg(h.exo,'min'))+' min']);
   if((h.hrv||[]).length) sec.push(['hrv','VFC (HRV)',Math.round(avg(h.hrv,'ms'))+' ms']);
   if(h.vo2) sec.push(['','VO₂ max',h.vo2+'']);
-  if((h.weight||[]).length) sec.push(['weight','Poids',h.weight[h.weight.length-1].kg+' kg']);
   const chev='<svg style="width:18px;height:18px;stroke:var(--muted);stroke-width:2;fill:none;flex-shrink:0" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+  // Composition corporelle (balance connectée → Apple Santé) : dernières valeurs
+  const lastOf=a=>(a&&a.length)?a[a.length-1]:null;
+  const bw=lastOf(h.weight), bf=lastOf(h.fat), bl=lastOf(h.lean), bb=lastOf(h.bmi);
+  const bodyItems=[];
+  if(bw) bodyItems.push(['Poids',bw.kg+' kg','#1d9e75']);
+  if(bf) bodyItems.push(['Masse grasse',bf.pct+' %','#d85a30']);
+  if(bl) bodyItems.push(['Muscle (masse maigre)',bl.kg+' kg','#3b82f6']);
+  if(bb) bodyItems.push(['IMC',bb.v+'','#a78bfa']);
+  const bodyCard=bodyItems.length?`<div class="card" style="margin-top:14px">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">⚖️ Composition corporelle${bw?' · '+fmtDate(bw.date):''}</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+      ${bodyItems.map(b=>`<div style="background:var(--surface2);border-radius:12px;padding:12px"><div style="font-size:22px;font-weight:700;color:${b[2]}">${b[1]}</div><div style="font-size:12px;color:var(--muted)">${b[0]}</div></div>`).join('')}
+    </div></div>`:'';
 
   $('health-content').innerHTML=`
     ${lastNight?`<div class="card tap" data-m="sleep" style="margin-top:14px;cursor:pointer">
@@ -1026,6 +1041,7 @@ function renderHealth(){
       <div class="stat tap" data-m="rest" style="cursor:pointer"><div class="n">${avgRest}</div><div class="l">FC repos</div></div>
     </div>
     ${sec.length?`<div class="stats" style="grid-template-columns:repeat(${Math.min(sec.length,3)},1fr)">`+sec.slice(0,6).map(s=>`<div class="stat${s[0]?' tap':''}" ${s[0]?`data-m="${s[0]}" style="cursor:pointer"`:''}><div class="n" style="font-size:18px">${s[2]}</div><div class="l">${s[1]}</div></div>`).join('')+`</div>`:''}
+    ${bodyCard}
 
     ${h.sleep.length?`<div class="card"><div style="font-size:13px;color:var(--muted);margin-bottom:6px">😴 Durée de sommeil (30 j)</div><div class="chart-wrap"><canvas id="ch-sleep"></canvas></div></div>`:''}
     ${h.steps.length?`<div class="card"><div style="font-size:13px;color:var(--muted);margin-bottom:6px">👟 Pas par jour</div><div class="chart-wrap"><canvas id="ch-steps"></canvas></div></div>`:''}

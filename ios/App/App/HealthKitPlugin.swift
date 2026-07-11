@@ -25,7 +25,8 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         if let t = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { s.insert(t) }
         let ids: [HKQuantityTypeIdentifier] = [
             .stepCount, .activeEnergyBurned, .heartRate, .heartRateVariabilitySDNN,
-            .restingHeartRate, .bodyMass, .vo2Max, .distanceWalkingRunning
+            .restingHeartRate, .bodyMass, .vo2Max, .distanceWalkingRunning,
+            .bodyFatPercentage, .leanBodyMass, .bodyMassIndex
         ]
         ids.forEach {
             if let t = qType($0) { s.insert(t) }
@@ -125,6 +126,10 @@ public class HealthKitPlugin: CAPPlugin, CAPBridgedPlugin {
         group.enter(); daily(.restingHeartRate, unit: HKUnit(from: "count/min"), options: .discreteAverage, start: start, end: end) { result["rest"] = $0; group.leave() }
         group.enter(); daily(.bodyMass, unit: .gramUnit(with: .kilo), options: .discreteAverage, start: start, end: end) { result["weight"] = $0; group.leave() }
         group.enter(); daily(.vo2Max, unit: HKUnit(from: "ml/kg*min"), options: .discreteAverage, start: start, end: end) { result["vo2"] = $0; group.leave() }
+        // Composition corporelle (balance connectée → Apple Santé)
+        group.enter(); daily(.bodyFatPercentage, unit: .percent(), options: .discreteAverage, start: start, end: end) { result["fat"] = $0; group.leave() }
+        group.enter(); daily(.leanBodyMass, unit: .gramUnit(with: .kilo), options: .discreteAverage, start: start, end: end) { result["lean"] = $0; group.leave() }
+        group.enter(); daily(.bodyMassIndex, unit: .count(), options: .discreteAverage, start: start, end: end) { result["bmi"] = $0; group.leave() }
 
         group.notify(queue: .main) {
             call.resolve(result)

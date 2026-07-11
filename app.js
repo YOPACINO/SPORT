@@ -170,9 +170,26 @@ function migrate(d){
   d.nutrition.daily = d.nutrition.daily||[];   // compléments / aliments quotidiens (ajout 1 clic)
   d.coach = d.coach||{vid:{}, note:{}, photos:{}};
   d.coach.photos = d.coach.photos||{};
+  d.stepImg = d.stepImg||{};      // {stretchKey:{stepIndex:1}} — images d'étapes (données dans IndexedDB)
+  d.stretchVid = d.stretchVid||{}; // {stretchKey:{kind:'file'|'url',url?}} — vidéo de démo
   return d;
 }
 function save(){ try{ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }catch(e){ alert('Mémoire pleine — supprime quelques photos.'); } }
+
+/* ===== Stockage média (IndexedDB) : images d'étapes + vidéos, sans limite de taille ===== */
+let _mediaDB=null;
+function mediaDB(){
+  return new Promise((res,rej)=>{
+    if(_mediaDB) return res(_mediaDB);
+    const r=indexedDB.open('monsport-media',1);
+    r.onupgradeneeded=()=>{ if(!r.result.objectStoreNames.contains('m')) r.result.createObjectStore('m'); };
+    r.onsuccess=()=>{ _mediaDB=r.result; res(_mediaDB); };
+    r.onerror=()=>rej(r.error);
+  });
+}
+function mediaSet(key,blob){ return mediaDB().then(db=>new Promise((res,rej)=>{ const t=db.transaction('m','readwrite'); t.objectStore('m').put(blob,key); t.oncomplete=()=>res(); t.onerror=()=>rej(t.error); })); }
+function mediaGet(key){ return mediaDB().then(db=>new Promise((res,rej)=>{ const t=db.transaction('m','readonly'); const rq=t.objectStore('m').get(key); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>rej(rq.error); })).catch(()=>null); }
+function mediaDel(key){ return mediaDB().then(db=>new Promise((res)=>{ const t=db.transaction('m','readwrite'); t.objectStore('m').delete(key); t.oncomplete=()=>res(); })).catch(()=>{}); }
 
 const $ = id => document.getElementById(id);
 const fmtDate = iso => new Date(iso).toLocaleDateString('fr-FR',{day:'2-digit',month:'short'});
@@ -530,17 +547,47 @@ function renderSList(){
 $('slist-runall').onclick=()=>openStretchRoutine({name:curSList.title,color:curSList.color,steps:curSList.items.map(s=>({name:s.name,sec:s.sec}))});
 
 /* ---- détail d'un étirement (schéma + instructions + photo perso) ---- */
-let curStretch=null;
+let curStretch=null, sdStepEditing=null;
 const zoneName={nuque:'Nuque',epaules:'Épaules',pecs:'Poitrine',triceps:'Triceps',avantbras:'Avant-bras',dos:'Dos / colonne',obliques:'Obliques',fessiers:'Fessiers',hanches:'Hanches',quadriceps:'Quadriceps',ischios:'Ischio-jambiers',adducteurs:'Adducteurs',mollets:'Mollets',chevilles:'Chevilles',corps:'Corps entier'};
 function openStretchDetail(s,fromList){
   curStretch=s; curStretch._fromList=fromList;
   $('sd-title').textContent=s.name; $('sd-sub').textContent=s.level+' · '+s.sec+' secondes';
   $('sd-body').innerHTML=bodyMap(s.target, (curSList&&curSList.color)||'#3b82f6');
   $('sd-target').textContent=zoneName[s.target]||'Corps';
-  $('sd-steps').innerHTML=s.steps.map((st,i)=>`<div style="display:flex;gap:12px;padding:8px 0;${i<s.steps.length-1?'border-bottom:1px solid var(--line)':''}"><span style="color:var(--accent);font-weight:700;flex-shrink:0">${i+1}</span><span style="font-size:15px">${st}</span></div>`).join('')+(s.tips?`<div style="margin-top:12px;font-size:13px;color:var(--muted);line-height:1.5">💡 ${s.tips}</div>`:'');
+  const flags=(DB.stepImg||{})[s.key]||{};
+  $('sd-steps').innerHTML=s.steps.map((st,i)=>`
+    <div style="padding:10px 0;${i<s.steps.length-1?'border-bottom:1px solid var(--line)':''}">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <span style="color:var(--accent);font-weight:700;flex-shrink:0">${i+1}</span>
+        <span style="font-size:15px;flex:1">${st}</span>
+        <button class="sd-stepbtn" data-step="${i}" title="Ajouter une image" style="background:var(--surface2);border:none;border-radius:8px;padding:6px 9px;cursor:pointer;flex-shrink:0">📷</button>
+      </div>
+      ${flags[i]?`<div style="position:relative;margin-top:8px">
+        <img id="sd-stepimg-${i}" style="width:100%;max-height:240px;object-fit:cover;border-radius:10px;cursor:pointer;background:var(--surface2)">
+        <button class="sd-stepdel" data-delstep="${i}" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer">✕</button>
+      </div>`:''}
+    </div>`).join('')+(s.tips?`<div style="margin-top:12px;font-size:13px;color:var(--muted);line-height:1.5">💡 ${s.tips}</div>`:'');
+  $('sd-steps').querySelectorAll('.sd-stepbtn').forEach(b=>b.onclick=()=>{ sdStepEditing=+b.dataset.step; $('sd-step-input').click(); });
+  $('sd-steps').querySelectorAll('.sd-stepdel').forEach(b=>b.onclick=async()=>{ const i=+b.dataset.delstep; await mediaDel('si:'+s.key+':'+i); if(DB.stepImg[s.key]){ delete DB.stepImg[s.key][i]; if(!Object.keys(DB.stepImg[s.key]).length) delete DB.stepImg[s.key]; } save(); openStretchDetail(s,fromList); });
+  Object.keys(flags).forEach(async i=>{ const d=await mediaGet('si:'+s.key+':'+i); const el=$('sd-stepimg-'+i); if(el&&d){ el.src=d; el.onclick=()=>openImgLightbox(d); } });
   renderStretchPhoto();
+  renderStretchVideo(s);
   renderCoach('sd-coach', s.key);
   show('view-stretch-detail');
+}
+async function renderStretchVideo(s){
+  const box=$('sd-video'); if(!box) return;
+  const v=(DB.stretchVid||{})[s.key];
+  let media='';
+  if(v&&v.kind==='file'){ const blob=await mediaGet('sv:'+s.key); if(blob){ const src=(typeof blob==='string')?blob:URL.createObjectURL(blob); media=`<video controls playsinline style="width:100%;border-radius:12px;max-height:340px;background:#000"><source src="${src}"></video>`; } }
+  else if(v&&v.kind==='url'){ const emb=videoEmbed(v.url); media=emb||`<a href="${v.url}" target="_blank" style="color:var(--accent)">Ouvrir la vidéo</a>`; }
+  box.innerHTML=`<div class="section-title">📹 Vidéo de démo${v?' <a class="sd-vdel" style="color:var(--muted);font-weight:400;font-size:12px;cursor:pointer">Retirer</a>':''}</div>`+
+    (media||`<div style="display:flex;gap:8px">
+      <button class="btn sec" id="sd-vidfile" style="flex:1;font-size:13px"><svg style="width:18px;height:18px;stroke:currentColor;stroke-width:2;fill:none" viewBox="0 0 24 24"><path d="M15 10l5-3v10l-5-3M3 6h12v12H3z"/></svg> Ma vidéo (fichier)</button>
+      <button class="btn ghost" id="sd-vidurl" style="flex:1;font-size:13px">Coller un lien</button></div>`);
+  if($('sd-vidfile')) $('sd-vidfile').onclick=()=>$('sd-vid-input').click();
+  if($('sd-vidurl')) $('sd-vidurl').onclick=()=>{ const u=prompt('Lien vidéo (YouTube ou Vimeo) :',''); if(u&&u.trim()){ DB.stretchVid[s.key]={kind:'url',url:u.trim()}; save(); renderStretchVideo(s); } };
+  const del=box.querySelector('.sd-vdel'); if(del) del.onclick=async()=>{ await mediaDel('sv:'+s.key); delete DB.stretchVid[s.key]; save(); renderStretchVideo(s); };
 }
 function renderStretchPhoto(){
   const ph=(DB.stretchPhotos||{})[curStretch.key];
@@ -556,6 +603,10 @@ $('sd-addphoto').onclick=()=>{
   else $('sd-photo-input').click();
 };
 $('sd-photo-input').onchange=e=>{ const f=e.target.files[0]; if(!f)return; compress(f,d=>{ DB.stretchPhotos=DB.stretchPhotos||{}; DB.stretchPhotos[curStretch.key]=d; save(); renderStretchPhoto(); }); };
+// Image d'une étape (stockée dans IndexedDB)
+$('sd-step-input').onchange=e=>{ const f=e.target.files[0]; if(!f||sdStepEditing==null)return; compress(f,async d=>{ await mediaSet('si:'+curStretch.key+':'+sdStepEditing,d); (DB.stepImg[curStretch.key]=DB.stepImg[curStretch.key]||{})[sdStepEditing]=1; save(); openStretchDetail(curStretch,curStretch._fromList); },1200); e.target.value=''; };
+// Vidéo de démo (fichier, stockée dans IndexedDB)
+$('sd-vid-input').onchange=async e=>{ const f=e.target.files[0]; if(!f)return; if(f.size>80*1024*1024){ alert('Vidéo trop lourde (max ~80 Mo). Filme plus court ou en qualité réduite.'); e.target.value=''; return; } await mediaSet('sv:'+curStretch.key,f); DB.stretchVid[curStretch.key]={kind:'file'}; save(); renderStretchVideo(curStretch); e.target.value=''; };
 
 /* ---- mode coach (vidéo de démo + notes, ajoutés par l'utilisateur) ---- */
 function videoEmbed(url){
